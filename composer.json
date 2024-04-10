@@ -1,0 +1,49 @@
+{
+	"name": "revspace/mediawiki-SimpleLDAPAuth",
+	"extra": {
+		"installer-name": "SimpleLDAPAuth"
+	},
+	"license": "GPL-2.0+",
+	"type": "mediawiki-extension",
+	"homepage": "https://github.com/revspace/mediawiki/SimpleLDAPAuth",
+	"description": "Simple authentication and authorization against an LDAP resource",
+	"keywords": [
+		"extension",
+		"wiki",
+		"mediawiki",
+		"ldap"
+	],
+	"authors": [
+		{
+			"name": "Shiz",
+			"email": "hi@shiz.me",
+			"role": "Developer"
+		}
+	],
+	"require": {
+		"composer/installers": "~1.0|~2"
+	},
+	"require-dev": {
+		"mediawiki/mediawiki-codesniffer": "38.0.0",
+		"mediawiki/minus-x": "1.1.0",
+		"php-parallel-lint/php-console-highlighter": "0.5.0",
+		"php-parallel-lint/php-parallel-lint": "1.2.0"
+	},
+	"scripts": {
+		"test": [
+			"parallel-lint . --exclude vendor",
+			"minus-x check .",
+			"@phpcs"
+		],
+		"fix": [
+			"minus-x fix .",
+			"phpcbf"
+		],
+		"phpcs": "phpcs -sp"
+	},
+	"config": {
+		"allow-plugins": {
+			"composer/installers": true
+		}
+	}
+}

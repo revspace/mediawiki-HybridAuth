@@ -1,0 +1,46 @@
+{
+	"name": "SimpleLDAPAuth",
+	"version": "1.0",
+	"author": [
+		"Shiz"
+	],
+	"url": "https://github.com/revspace/mediawiki-SimpleLDAPAuth",
+	"descriptionmsg": "simpleldapauth-desc",
+	"license-name": "GPL-2.0",
+	"type": "other",
+	"AutoloadNamespaces": {
+		"MediaWiki\\Extension\\SimpleLDAPAuth\\" : "src/"
+	},
+	"TestAutoloadNamespaces": {},
+	"requires": {
+		"MediaWiki": ">= 1.31.0",
+		"extensions": {
+			"PluggableAuth": "7.*"
+		}
+	},
+	"MessagesDirs": {
+		"SimpleLDAPAuth": [
+			"i18n"
+		]
+	},
+	"ExtensionFunctions": [],
+	"Hooks": {
+		"LoadExtensionSchemaUpdates": "MediaWiki\\Extension\\SimpleLDAPAuth\\Hooks::onLoadExtensionSchemaUpdates"
+	},
+	"config_prefix": "SimpleLDAPAuth",
+	"config": {},
+	"attributes": {
+		"PluggableAuth": {
+			"SimpleLDAPAuth": {
+				"class": "MediaWiki\\Extension\\SimpleLDAPAuth\\LDAPPluggableAuth",
+				"services": [
+					"AuthManager",
+					"UserFactory",
+					"DBLoadBalancer"
+				]
+			}
+		}
+	},
+	"load_composer_autoloader" : true,
+	"manifest_version": 2
+}
