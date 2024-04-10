@@ -10,7 +10,7 @@ class UserFinder {
 	/**
 	 * @var ILoadBalancer
 	 */
-	protected $loadbalancer;
+	protected $loadBalancer;
 
 	/**
 	 * @var UserFactory
@@ -21,8 +21,8 @@ class UserFinder {
 	 * @param ILoadBalancer $loadBalancer to use
 	 * @param UserFactory   $userFactory  to use
 	 */
-	public function __construct( ILoadBalancer $loadbalancer, UserFactory $userFactory ): void {
-		$this->loadbalancer = $loadbalancer;
+	public function __construct( ILoadBalancer $loadBalancer, UserFactory $userFactory ) {
+		$this->loadBalancer = $loadBalancer;
 		$this->userFactory = $userFactory;
 	}
 
@@ -37,16 +37,15 @@ class UserFinder {
 	 * @param string $user  to get user from
 	 * @return User|null
 	 */
-	public function getUserByName( string $name ): User|null {
-		$user = $this->userFactory->newFromName( $username );
-		return $user->isRegistered() ? $user : null;
+	public function getUserByName( string $name ): ?User {
+		return $this->getUserBy( 'user_name', $name );
 	}
 
 	/**
 	 * @param string $email to get user from
 	 * @return User|null
 	 */
-	public function getUserByEmail( string $email ): User|null {
+	public function getUserByEmail( string $email ): ?User {
 		return $this->getUserBy( 'user_email', $email );
 	}
 
@@ -54,17 +53,17 @@ class UserFinder {
 	 * @param string $email to get user from
 	 * @return User|null
 	 */
-	public function getUserByRealName( string $realname ): User|null {
+	public function getUserByRealName( string $realname ): ?User {
 		return $this->getUserBy( 'user_real_name', $realname );
 	}
 
-	protected function getUserBy( string $field, string $value ): User|null {
+	protected function getUserBy( string $field, string $value ): ?User {
 		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
-		$userRow = $dbr->selectRow(
-		    'user',
-		    [ 'user_id' ],
-		    [ $field => $value ],
-		    __METHOD__ );
+		$userRow = $dbr->newSelectQueryBuilder()
+			->from( 'user' )
+			->where( "LOWER({$field}) = " . $dbr->addQuotes( strtolower( $value ) ) )
+			->field( 'user_id' )
+			->fetchRow();
 		return $userRow ? $this->userFactory->newFromId( $userRow->user_id ) : null;
 	}
 }

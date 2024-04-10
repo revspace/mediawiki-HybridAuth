@@ -9,7 +9,7 @@ use Wikimedia\Rdbms\ILoadBalancer;
 
 class UserLinkStore {
 	const BASETABLE = 'link';
-	const TABLE = 'ldap_simpleauth_' . static::BASETABLE;
+	const TABLE = 'ldap_simpleauth_' . self::BASETABLE;
 
 	/**
 	 * @var ILoadBalancer
@@ -28,7 +28,7 @@ class UserLinkStore {
 	 * @param  string $dn     to get user for
 	 * @return User|null
 	 */
-	public function getUserForDN( string $domain, string $dn ): User|null {
+	public function getUserForDN( string $domain, string $dn ): ?User {
 		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
 		$row = $dbr->newSelectQueryBuilder()
 			->from( static::TABLE )
@@ -59,7 +59,7 @@ class UserLinkStore {
 	 * @param  string $domain to get DN for
 	 * @return string|null
 	 */
-	public function getDNForUser( User $user, string $domain ): string|null {
+	public function getDNForUser( User $user, string $domain ): ?string {
 		if (!$user->isRegistered()) {
 			return null;
 		}
@@ -77,7 +77,7 @@ class UserLinkStore {
 	 * @param string $dn to set user to
 	 * @return bool
 	 */
-	public function setDNForUser( UserIdentity $user, string $domain, string $dn ) {
+	public function setDNForUser( UserIdentity $user, string $domain, string $dn ): bool {
 		$this->clearDNForUser( $user );
 		$userId = $user->getId();
 		if ( $userId != 0 ) {
@@ -102,7 +102,7 @@ class UserLinkStore {
 	public function clearDNForUser( $user ) {
 		$userId = $user->getId();
 		if ( $userId != 0 ) {
-                        $dbw = $this->loadbalancer->getConnection( DB_PRIMARY );
+                        $dbw = $this->loadBalancer->getConnection( DB_PRIMARY );
 			$dbw->delete(
 				static::TABLE,
 				[ 'user_id' => $userId ],
@@ -113,4 +113,3 @@ class UserLinkStore {
 		return false;
 	}
 }
-

@@ -19,9 +19,9 @@ class LDAPGroupMapper {
 	/**
 	 * @var UserMapper
 	 */
-	protected UserMapper $userMapper;
+	protected $userMapper;
 
-	public function __construct( array $config, UserMapper $userMapper ) {
+	public function __construct( $config, UserMapper $userMapper ) {
 		$this->config = $config;
 		$this->userMapper = $userMapper;
 	}

@@ -8,25 +8,33 @@
 	"descriptionmsg": "simpleldapauth-desc",
 	"license-name": "GPL-2.0",
 	"type": "other",
-	"AutoloadNamespaces": {
-		"MediaWiki\\Extension\\SimpleLDAPAuth\\" : "src/"
-	},
-	"TestAutoloadNamespaces": {},
 	"requires": {
 		"MediaWiki": ">= 1.31.0",
 		"extensions": {
 			"PluggableAuth": "7.*"
 		}
 	},
+
+	"AvailableRights": [
+		"ext.simpleldapauth.link"
+	],
+	"AutoloadNamespaces": {
+		"MediaWiki\\Extension\\SimpleLDAPAuth\\" : "src/"
+	},
 	"MessagesDirs": {
 		"SimpleLDAPAuth": [
 			"i18n"
 		]
 	},
-	"ExtensionFunctions": [],
+	"APIModules": {
+		"ext.simpleldapauth.unlink": {
+			"class": "MediaWiki\\Extension\\SimpleLDAPAuth\\Api\\Unlink"
+		}
+	},
 	"Hooks": {
 		"LoadExtensionSchemaUpdates": "MediaWiki\\Extension\\SimpleLDAPAuth\\Hooks::onLoadExtensionSchemaUpdates"
 	},
+
 	"config_prefix": "SimpleLDAPAuth",
 	"config": {},
 	"attributes": {

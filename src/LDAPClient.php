@@ -25,24 +25,24 @@ class LDAPClient {
 	protected $domainConfig;
 
 	/**
-	 * @var resource */
-	*/
+	 * @var resource
+	 */
 	protected $conn;
 
 	/**
 	 * @var bool Whether the client is bound at the moment or not
 	 */
-	protected bool $bound;
+	protected $bound;
 
 
-	public function __construct( array $config ) {
+	public function __construct( $config ) {
 		$this->config = $config;
 		$this->bound = false;
 		$this->connect();
 	}
 
-	public function getConfig( string $key, $default = null ): string|null {
-		return $this->config[$key] ?? $default;
+	public function getConfig( string $key, $default = null ) {
+		return $this->config->has( $key ) ? $this->config->get( $key ) : $default;
 	}
 
 	public function getBaseDN( ): string {
@@ -92,14 +92,14 @@ class LDAPClient {
 			\ldap_set_option( $this->conn, LDAP_OPT_X_TLS_CACERTFILE, $caBundle );
 		}
 		$caDir = $this->getConfig( static::CONFIG_CA_DIR );
-		if ( $caFile && defined( 'LDAP_OPT_X_TLS_CACERTDIR' ) ) {
+		if ( $caDir && defined( 'LDAP_OPT_X_TLS_CACERTDIR' ) ) {
 			\ldap_set_option( $this->conn, LDAP_OPT_X_TLS_CACERTDIR, $caDir );
 		}
 		$clientCert = $this->getConfig( static::CONFIG_CERT );
 		if ( $clientCert && defined( 'LDAP_OPT_X_TLS_CERTFILE' ) ) {
 			\ldap_set_option( $this->conn, LDAP_OPT_X_TLS_CERTFILE, $clientCert );
 		}
-		$clientKey = $this->getOption( static::CONFIG_CERTKEY );
+		$clientKey = $this->getConfig( static::CONFIG_CERTKEY );
 		if ( $clientKey && defined( 'LDAP_OPT_X_TLS_KEYFILE' ) ) {
 			\ldap_set_option( $this->conn, LDAP_OPT_X_TLS_KEYFILE, $clientKey );
 		}
@@ -128,7 +128,7 @@ class LDAPClient {
 	}
 
 	public function bindAs( string $dn, string $password ) {
-		$bound = \ldap_bind( $dn, $password );
+		$bound = \ldap_bind( $this->conn, $dn, $password );
 		/* only update if successful, we can retain old binding */
 		if ( $bound ) {
 			$this->bound = true;
@@ -155,7 +155,7 @@ class LDAPClient {
 		}
 	}
 
-	public function read( string $dn, array|null $attributes = null, array|null $filters = null): array|null {
+	public function read( string $dn, ?array $attributes = null, ?array $filters = null): ?array {
 		$this->ensureBound();
 
 		$filterString = static::formatFilterString( $filters );
@@ -167,7 +167,7 @@ class LDAPClient {
 		return $entries ? $entries[0] : null;
 	}
 
-	public function search( array|null $attributes, array|null $filters = null, string|null $dn = null ): array|null {
+	public function search( array $attributes, ?array $filters = null, ?string $dn = null ): ?array {
 		$this->ensureBound();
 
 		$filterString = static::formatFilterString( $filters );
@@ -181,26 +181,20 @@ class LDAPClient {
 		return $this->getEntries( $r, $attributes );
 	}
 
-	protected function getEntries( resource $res, array | null $attributes ): array {
+	protected function getEntries( $res, ?array $attributes ): array {
 		$entries = [];
 		$entry = \ldap_first_entry( $this->conn, $res );
 		while ( $entry ) {
-			$e = [];
+			$values = \ldap_get_attributes( $this->conn, $entry );
+			$e = static::normalizeMap( $values );
 			if ( $attributes ) {
-				$e = [];
-				foreach ( $attributes as $attr ) {
-					$value = \ldap_get_values( $this->conn, $entry, $attr );
-					if ( $value !== false )
-						$e[$attr] = static::normalizeValue( $value );
+				if ( !isset( $e["dn"] ) && in_array( "dn", $attributes ) ) {
+					$e["dn"] = \ldap_get_dn( $this->conn, $entry );
 				}
 			} else {
-				$values = \ldap_get_attributes( $this->conn, $entry );
-				if ( $values !== false ) {
-					$e = static::normalizeValue( $values );
-					$dn = \ldap_get_dn( $this->conn, $entry );
-					if ( $dn !== false ) {
-						$e["dn"] = $dn;
-					}
+				$dn = \ldap_get_dn( $this->conn, $entry );
+				if ( $dn !== false ) {
+					$e["dn"] = $dn;
 				}
 			}
 			$entries[] = $e;
@@ -209,7 +203,7 @@ class LDAPClient {
 		return $entries;
 	}
 
-	protected static function formatFilterString( array|null $filters ) {
+	protected static function formatFilterString( ?array $filters ) {
 		if ( !$filters ) {
 			return '(objectClass=*)';
 		}
@@ -227,14 +221,29 @@ class LDAPClient {
 				}
 			}
 		}
-		return "&" . implode($filterParts);
+		if ( count($filterParts) === 1 ) {
+			return $filterParts[0];
+		}
+		return "(&" . implode( $filterParts ) . ")";
 	}
 
-	protected static function normalizeValue( $value ) {
+	protected static function normalizeMap( $value ) {
 		if ( is_array( $value ) && isset( $value["count"] ) ) {
 			$normalized = [];
-			for ( $i = 0; i < $value["count"]; $i++ ) {
-				$normalized[] = static::normalizeValue( $value[$i] );
+			for ( $i = 0; $i < $value["count"]; $i++ ) {
+				$key = $value[$i];
+				$normalized[$key] = static::normalizeArr( $value[$key] );
+			}
+			return $normalized;
+		}
+		return $value;
+	}
+
+	protected static function normalizeArr( $value ) {
+		if ( is_array( $value ) && isset( $value["count"] ) ) {
+			$normalized = [];
+			for ( $i = 0; $i < $value["count"]; $i++ ) {
+				$normalized[] = static::normalizeArr( $value[$i] );
 			}
 			return $normalized;
 		}

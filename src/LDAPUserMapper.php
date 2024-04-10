@@ -32,8 +32,8 @@ class LDAPUserMapper {
 	protected $config;
 
 	/**
-	 * @var LDAPClient */
-	*/
+	 * @var LDAPClient
+	 */
 	protected $ldapClient;
 
 	/**
@@ -53,7 +53,7 @@ class LDAPUserMapper {
 	 * @param UserFactory   $userFactory  User factory for mapping
 	 * @param UserLinkStore $linkStore    User link store for mapping
 	 */
-	public function __construct( string $domain, array $config, LDAPClient $ldapClient, UserFinder $userFinder, UserLinkStore $linkStore ) {
+	public function __construct( string $domain, $config, LDAPClient $ldapClient, UserFinder $userFinder, UserLinkStore $linkStore ) {
 		$this->domain = $domain;
 		$this->config = $config;
 		$this->ldapClient = $ldapClient;
@@ -70,26 +70,28 @@ class LDAPUserMapper {
 	 *
 	 * @param string $username      Username
 	 * @param string $password      Password
+	 * @param string &$dn           Mapped DN
 	 * @param string &$errorMessage Error message if mapping failed
 	 * @return User|null
 	 */
-	public function authenticate( string $username, string $password, string &$errorMessage ): User|null {
+	public function authenticate( string $username, string $password, ?string &$dn, ?string &$errorMessage ): ?User {
 		$bindAttr = $this->getConfig( static::CONFIG_BIND_ATTR );
 		$authenticated = null;
-	
+
 		if ( $bindAttr ) {
 			$baseDN = $this->getUserBaseDN();
-			$bindDN = "{$bindAttr}={$this->client->escape($username)}," . $baseDN;
-			$authenticated = $this->ldapClient->bindUser( $bindDN, $password );
+			$escapedUsername = LDAPClient::escape($username);
+			$dn = "{$bindAttr}={$escapedUsername}," . $baseDN;
+			$authenticated = $this->ldapClient->bindAs( $dn, $password );
 		}
 
 		if ( $authenticated !== false ) {
-			$ldapDN = $this->forwardLookup( $username, $ldapUser, $ldapName, $ldapEmail, $errorMessage );
-			if ( !$ldapDN ) {
+			$dn = $this->forwardLookup( $username, $ldapUser, $ldapName, $ldapEmail, $errorMessage );
+			if ( !$dn ) {
 				return null;
 			}
 			if ( !$authenticated ) {
-				$authenticated = $this->ldapClient->bindUser( $ldapDN, $password );
+				$authenticated = $this->ldapClient->bindAs( $dn, $password );
 			}
 		}
 		if ( !$authenticated ) {
@@ -100,7 +102,7 @@ class LDAPUserMapper {
 		}
 
 		/* We have some information: now match it to a user, existing or new */
-		$user = $this->forwardMap( $ldapDN, $ldapUser, $ldapName, $ldapEmail, $errorMessage );
+		$user = $this->forwardMap( $dn, $ldapUser, $ldapName, $ldapEmail, $errorMessage );
 		if (!$user) {
 			return null;
 		}
@@ -116,7 +118,7 @@ class LDAPUserMapper {
 	 * @param string|null $errorMessage  Error message if lookup failed for special reasons
 	 * @return string|null               LDAP DN if successful
 	 */
-	public function getDN( UserIdentity $user, string|null &$errorMessage ): string|null {
+	public function getDN( UserIdentity $user, ?string &$errorMessage ): ?string {
 		return $this->reverseMap( $user, $errorMessage );
 	}
 
@@ -128,7 +130,7 @@ class LDAPUserMapper {
 	 * @param array|null $attributes     Attribute names to look up
 	 * @return array|null                LDAP attributes if successful
 	 */
-	public function getAttributes( UserIdentity $user, string|null &$errorMessage, array|null $attributes = null ): array|null {
+	public function getAttributes( UserIdentity $user, ?string &$errorMessage, ?array $attributes = null ): ?array {
 		$ldapDN = $this->reverseMap( $user, $errorMessage );
 		return $this->ldapClient->read( $ldapDN, $attributes );
 	}
@@ -147,9 +149,9 @@ class LDAPUserMapper {
 	 */
 	protected function forwardLookup(
 		string $username,
-		string &$ldapUser, string &$ldapName, string &$ldapEmail,
-		string &$errorMessage
-	): string|null {
+		?string &$ldapUser, ?string &$ldapName, ?string &$ldapEmail,
+		?string &$errorMessage
+	): ?string {
 		$userAttr = $this->getConfig( static::CONFIG_NAME_ATTR, 'uid' );
 		$realAttr = $this->getConfig( static::CONFIG_REALNAME_ATTR, 'cn' );
 		$emailAttr = $this->getConfig( static::CONFIG_EMAIL_ATTR, 'mail' );
@@ -171,9 +173,9 @@ class LDAPUserMapper {
 		}
 
 		/* Update variables */
-		$ldapUser = $result[$userAttr] ?? $username;
-		$ldapName = $result[$realAttr] ?? '';
-		$ldapEmail = $result[$emailAttr] ?? '';
+		$ldapUser = $result[$userAttr][0] ?? $username;
+		$ldapName = $result[$realAttr][0] ?? '';
+		$ldapEmail = $result[$emailAttr][0] ?? '';
 		return $result['dn'];
 	}
 
@@ -188,9 +190,9 @@ class LDAPUserMapper {
 	 * @return User|null              the user if successful
 	 */
 	protected function forwardMap(
-		string $dn, string $username, string|null $realname, string|null $email,
-		string &$errorMessage
-	): User|null {
+		string $dn, string $username, string $realname, string $email,
+		?string &$errorMessage
+	): ?User {
 		/* First try to find the user in our mapping store. */
 		$user = $this->linkStore->getUserForDN( $this->domain, $dn );
 		if ( $user ) {
@@ -231,7 +233,7 @@ class LDAPUserMapper {
 			return null;
 		}
 		if ($user) {
-			if ( $this->linkStore->isUserMapped( $user ) ) {
+			if ( $this->linkStore->isUserLinked( $user ) ) {
 				/* User is already mapped to another user */
 				$errorMessage = wfMessage(
 					'simpleldapauth-error-authentication-map-collision'
@@ -267,7 +269,7 @@ class LDAPUserMapper {
 	 * @param string|null &$errorMessage  to show user
 	 * @return string|null LDAP DN if successful
 	 */
-	protected function reverseMap( UserIdentity $user, string|null &$errorMessage ): string|null {
+	protected function reverseMap( UserIdentity $user, ?string &$errorMessage ): ?string {
 		$errorMessage = null;
 
 		/* First try to find the DN in our mapping store */
@@ -320,7 +322,7 @@ class LDAPUserMapper {
 	}
 
 	/**
-	 * Get User base DN
+	 * Get user base DN
 	 *
 	 * @return string
 	 */
@@ -346,7 +348,7 @@ class LDAPUserMapper {
 	 * @param array|null $attributes  Attributes to return
 	 * @return array|null             The requested attributes if successful
 	 */
-	protected function searchLDAPUser( array $filter, array|null $attributes ): array|null {
+	protected function searchLDAPUser( array $filter, ?array $attributes ): ?array {
 		$users = $this->searchLDAPUsers( $filter, $attributes );
 		if ( !is_array( $users ) ) {
 			return null;
@@ -358,8 +360,8 @@ class LDAPUserMapper {
 			return null;
 		}
 		return $users[0];
-   }
-   
+	}
+
 	/**
 	 * Search users on LDAP.
 	 *
@@ -367,12 +369,12 @@ class LDAPUserMapper {
 	 * @param array|null $attributes  Attributes to return
 	 * @return array|null             The requested attributes if successful
 	 */
-	protected function searchLDAPUsers( array $filter, array|null $attributes ): array|null {
+	protected function searchLDAPUsers( array $filter, ?array $attributes ): ?array {
 		$searchDN = $this->getUserBaseDN();
 		$searchFilter = $this->getConfig( static::CONFIG_SEARCH_FILTER );
 		if ( $searchFilter ) {
 			$filter[] = $searchFilter;
 		}
-		return $this->ldapClient->search( $attributes, $filter, $dn );
+		return $this->ldapClient->search( $attributes, $filter, $searchDN );
 	}
 }

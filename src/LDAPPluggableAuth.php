@@ -7,6 +7,7 @@ use MWException;
 use User;
 
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\ILoadBalancer;
@@ -21,46 +22,38 @@ class LDAPPluggableAuth extends PluggableAuth {
 	const FORMFIELD_USERNAME = 'ldap_username';
 	const FORMFIELD_PASSWORD = 'ldap_password';
 
-	const CONFIG_DOMAIN  = 'domain';
-	const CONFIG_USER    = 'user';
-	const CONFIG_GROUP   = 'group';
-
 	/**
 	 * @var AuthManager
 	 */
 	private $authManager;
 
 	/**
-	 * @var UserFactory
+	 * @var LDAPAuthManager
 	 */
-	private $userFactory;
-
-	/**
-	 * @var UserLinkStore
-	 */
-	private $linkStore;
-
-	/**
-	 * @var LDAPUserMapper
-	 */
-	private $ldapUserMapper;
-
-	/**
-	 * @var LDAPGroupmapper
-	 */
-	private $ldapGroupMapper;
+	private $ldapAuthManager;
 
 	public function __construct( AuthManager $authManager, UserFactory $userFactory, ILoadBalancer $loadBalancer ) {
+		$this->setLogger( LoggerFactory::getInstance( 'SimpleLDAPAuth' ) );
 		$this->authManager = $authManager;
-		$this->userFactory = $userFactory;
-		$this->linkStore = new UserLinkStore( $loadBalancer );
+		$this->ldapAuthManager = new LDAPAuthManager( $loadBalancer, $userFactory );
+	}
 
-		$domain = $this->getDomain();
+	protected function getDomain( ): string {
+		$name = $this->getConfigId();
 		$config = $this->getData();
-		$finder = new UserFinder( $loadBalancer, $this->userFactory );
-		$client = new LDAPClient( $domain, $config );
-		$this->ldapUserMapper = new LDAPUserMapper( $domain, $config[static::CONFIG_USER], $client, $finder, $this->linkStore );
-		$this->ldapGroupMapper = new LDAPGroupMapper( $config[static::CONFIG_GROUP], $this->ldapUserMapper );
+		return $this->ldapAuthManager->getDomain( $name, $config );
+	}
+
+	protected function getUserMapper( ): LDAPUserMapper {
+		$name = $this->getConfigId();
+		$config = $this->getData();
+		return $this->ldapAuthManager->getUserMapper( $name, $config );
+	}
+
+	protected function getGroupMapper( ): LDAPGroupMapper {
+		$name = $this->getConfigId();
+		$config = $this->getData();
+		return $this->ldapAuthManager->getGroupMapper( $name, $config );
 	}
 
 	/**
@@ -81,7 +74,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 
 		$username = $extraLoginFields[static::FORMFIELD_USERNAME] ?? '';
 		$password = $extraLoginFields[static::FORMFIELD_PASSWORD] ?? '';
-		$user = $this->ldapUserMapper->authenticate( $username, $password, $errorMessage );
+		$user = $this->getUserMapper()->authenticate( $username, $password, $dn, $errorMessage );
 		if ( !$user ) {
 			return false;
 		}
@@ -93,7 +86,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 		 */
 		$this->authManager->setAuthenticationSessionData(
 			static::SESSIONKEY_DN,
-			$ldapDN
+			$dn
 		);
 
 		/* If we matched to an existing user, overwrite attributes,
@@ -127,7 +120,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 	 */
 	public function getAttributes( UserIdentity $user ): array {
 		$errorMessage = null;
-		$attributes = $this->ldapUserMapper->getAttributes( $user, $errorMessage );
+		$attributes = $this->getUserMapper()->getAttributes( $user, $errorMessage );
 		return $attributes;
 	}
 
@@ -145,16 +138,8 @@ class LDAPPluggableAuth extends PluggableAuth {
 		 * This can also not be a local login attempt as it would be caught in `authenticate`.
 		 */
 		if ( $dn !== null ) {
-			$this->linkStore->setDNForUser(
-				$this->userFactory->newFromId( $userId ),
-				$domain,
-				$dn
-			);
+			$this->ldapAuthManager->linkUserID( $userId, $domain, $dn );
 		}
-	}
-
-	protected function getDomain( ): string {
-		return $this->getConfig( static::CONFIG_DOMAIN, $this->getConfigId() );
 	}
 
 	public static function getExtraLoginFields( ): array {

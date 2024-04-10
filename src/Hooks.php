@@ -17,11 +17,11 @@ class Hooks {
 			switch ( $updater->getDB()->getType() ) {
 				case 'mysql':
 				case 'sqlite':
-					$schemaFile = "${schemaDir}/{$link}.mysql.sql";
+					$schemaFile = "${schemaDir}/{$table}.mysql.sql";
 					break;
 
 				case 'postgres':
-					$schemaFile = "${schemaDir}/{$link}.postgres.sql";
+					$schemaFile = "${schemaDir}/{$table}.postgres.sql";
 					break;
 				default:
 					return false;
