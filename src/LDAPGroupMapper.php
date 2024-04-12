@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Extension\SimpleLDAPAuth;
 
+use Config;
 use User;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -12,22 +13,28 @@ class LDAPGroupMapper {
 	const CONFIG_USER_ATTR   = 'user_attr';
 
 	/**
-	 * @var array
+	 * @var string
+	 */
+	protected $domain;
+
+	/**
+	 * @var Config
 	 */
 	protected $config;
 
 	/**
-	 * @var UserMapper
+	 * @var LDAPUserMapper
 	 */
 	protected $userMapper;
 
-	public function __construct( $config, UserMapper $userMapper ) {
+	public function __construct( string $domain, Config $config, LDAPUserMapper $userMapper ) {
+		$this->domain = $domain;
 		$this->config = $config;
 		$this->userMapper = $userMapper;
 	}
 
 	protected function getConfig( string $key, $default = null ) {
-		return $this->config[$key] ?? $default;
+		return $this->config->has( $key ) ? $this->config->get( $key ) : $default;
 	}
 
 	/**

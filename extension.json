@@ -5,19 +5,33 @@
 		"Shiz"
 	],
 	"url": "https://github.com/revspace/mediawiki-SimpleLDAPAuth",
-	"descriptionmsg": "simpleldapauth-desc",
+	"descriptionmsg": "ext.simpleldapauth.desc",
 	"license-name": "GPL-2.0",
 	"type": "other",
 	"requires": {
-		"MediaWiki": ">= 1.31.0",
-		"extensions": {
-			"PluggableAuth": "7.*"
-		}
+		"MediaWiki": ">= 1.35.0"
 	},
 
 	"AvailableRights": [
 		"ext.simpleldapauth.link"
 	],
+	"AuthManagerAutoConfig": {
+		"primaryauth": {
+			"SimpleLDAPAuth": {
+				"class": "MediaWiki\\Extension\\SimpleLDAPAuth\\Auth\\LDAPAuthProvider",
+				"services": [
+					"SimpleLDAPAuth.LDAPAuthManager"
+				],
+				"sort": 50
+			}
+		},
+		"secondaryauth": {
+			"ConfirmLink": {
+				"class": "MediaWiki\\Auth\\ConfirmLinkSecondaryAuthenticationProvider",
+				"sort": 50
+			}
+		}
+	},
 	"AutoloadNamespaces": {
 		"MediaWiki\\Extension\\SimpleLDAPAuth\\" : "src/"
 	},
@@ -34,17 +48,19 @@
 	"Hooks": {
 		"LoadExtensionSchemaUpdates": "MediaWiki\\Extension\\SimpleLDAPAuth\\Hooks::onLoadExtensionSchemaUpdates"
 	},
+	"ServiceWiringFiles": ["src/ServiceWiring.php"],
 
-	"config_prefix": "SimpleLDAPAuth",
-	"config": {},
+	"config_prefix": "LDAPAuthProvider",
+	"config": {
+		"domains": []
+	},
 	"attributes": {
 		"PluggableAuth": {
 			"SimpleLDAPAuth": {
-				"class": "MediaWiki\\Extension\\SimpleLDAPAuth\\LDAPPluggableAuth",
+				"class": "MediaWiki\\Extension\\SimpleLDAPAuth\\Auth\\LDAPPluggableAuth",
 				"services": [
 					"AuthManager",
-					"UserFactory",
-					"DBLoadBalancer"
+					"SimpleLDAPAuth.LDAPAuthManager"
 				]
 			}
 		}

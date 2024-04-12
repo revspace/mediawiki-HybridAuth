@@ -2,9 +2,12 @@
 
 namespace MediaWiki\Extension\SimpleLDAPAuth;
 
+use Config;
 use User;
+use MediaWiki\Extension\SimpleLDAPAuth\Lib\LDAPClient;
+use MediaWiki\Extension\SimpleLDAPAuth\Lib\UserFinder;
+use MediaWiki\User\UserNameUtils;
 use Wikimedia\Rdbms\ILoadBalancer;
-use MediaWiki\Extension\LDAPProvider\ClientConfig;
 
 class LDAPUserMapper {
 	const CONFIG_BASE_DN       = 'base_dn';
@@ -16,6 +19,7 @@ class LDAPUserMapper {
 	const CONFIG_SEARCH_ATTR   = 'search_attr';
 	const CONFIG_BIND_ATTR     = 'bind_attr';
 	const CONFIG_MAP_TYPE      = 'map_type';
+	const CONFIG_AUTO_CREATE   = 'auto_create';
 
 	const MAPTYPE_NAME = 'username';
 	const MAPTYPE_EMAIL = 'email';
@@ -27,9 +31,14 @@ class LDAPUserMapper {
 	protected $domain;
 
 	/**
-	 * @var array
+	 * @var Config
 	 */
 	protected $config;
+
+	/**
+	 * @var UserNameUtils
+	 */
+	protected $userNameUtils;
 
 	/**
 	 * @var LDAPClient
@@ -53,62 +62,67 @@ class LDAPUserMapper {
 	 * @param UserFactory   $userFactory  User factory for mapping
 	 * @param UserLinkStore $linkStore    User link store for mapping
 	 */
-	public function __construct( string $domain, $config, LDAPClient $ldapClient, UserFinder $userFinder, UserLinkStore $linkStore ) {
+	public function __construct( string $domain, Config $config, UserNameUtils $userNameUtils, LDAPClient $ldapClient, UserFinder $userFinder, UserLinkStore $linkStore ) {
 		$this->domain = $domain;
 		$this->config = $config;
+		$this->userNameUtils = $userNameUtils;
 		$this->ldapClient = $ldapClient;
 		$this->userFinder = $userFinder;
 		$this->linkStore = $linkStore;
 	}
 
 	protected function getConfig( string $key, $default = null ) {
-		return $this->config[$key] ?? $default;
+		return $this->config->has( $key ) ? $this->config->get( $key ) : $default;
+	}
+
+	public function shouldAutoCreate( bool $default = true ): bool {
+		return $this->getConfig( static::CONFIG_AUTO_CREATE, $default );
 	}
 
 	/**
-	 * Map username and password to MediaWiki user through LDAP.
+	 * Check whether LDAP user exists
 	 *
-	 * @param string $username      Username
-	 * @param string $password      Password
-	 * @param string &$dn           Mapped DN
-	 * @param string &$errorMessage Error message if mapping failed
-	 * @return User|null
+	 * @param string $username      LDAP username
+	 * @return ?bool
 	 */
-	public function authenticate( string $username, string $password, ?string &$dn, ?string &$errorMessage ): ?User {
-		$bindAttr = $this->getConfig( static::CONFIG_BIND_ATTR );
-		$authenticated = null;
+	public function exists( string $username ): ?bool {
+		$errorMessage = null;
+		$dn = $this->lookupLDAPUser( $username, $errorMessage );
+		return $dn ? true : ($errorMessage ? null : false);
+	}
 
-		if ( $bindAttr ) {
-			$baseDN = $this->getUserBaseDN();
-			$escapedUsername = LDAPClient::escape($username);
-			$dn = "{$bindAttr}={$escapedUsername}," . $baseDN;
-			$authenticated = $this->ldapClient->bindAs( $dn, $password );
-		}
+	/**
+	 * Authenticate LDAP credentials and return DN
+	 *
+	 * @param string $username      LDAP username
+	 * @param string $password      LDAP password
+	 * @return ?string
+	 */
+	public function authenticate( string $username, string $password ): ?string {
+		$errorMessage = null;
 
-		if ( $authenticated !== false ) {
-			$dn = $this->forwardLookup( $username, $ldapUser, $ldapName, $ldapEmail, $errorMessage );
-			if ( !$dn ) {
-				return null;
-			}
-			if ( !$authenticated ) {
-				$authenticated = $this->ldapClient->bindAs( $dn, $password );
-			}
-		}
-		if ( !$authenticated ) {
-			$errorMessage = wfMessage(
-				'simpleldapauth-error-authentication-failed', $this->domain
-			)->text();
+		$dn = $this->lookupLDAPUser( $username, $errorMessage );
+		if ( !$dn ) {
 			return null;
 		}
-
-		/* We have some information: now match it to a user, existing or new */
-		$user = $this->forwardMap( $dn, $ldapUser, $ldapName, $ldapEmail, $errorMessage );
-		if (!$user) {
+		if ( !$this->ldapClient->bindAs( $dn, $password ) ) {
 			return null;
 		}
+		return $dn;
+	}
 
-		/* TODO: Sync user if requested */
-		return $user;
+	/**
+	 * Try to map DN to user
+	 *
+	 * @param string  $username         LDAP username
+	 * @param string  $password         LDAP password
+	 * @param ?string &$dn              Mapped LDAP DN if successful
+	 * @param ?UserIdentity &$userHint  Suggested user for linking or creation if failed
+	 * @param ?string &$errorMessage    Error message to show the user if failed
+	 * @return ?User
+	 */
+	public function mapDN( string $dn, ?UserIdentity &$userHint, ?string &$errorMessage ): ?User {
+		return $this->forwardMap( $dn, $userHint, $errorMessage );
 	}
 
 	/**
@@ -137,78 +151,85 @@ class LDAPUserMapper {
 
 
 	/**
-	 * Get user information from LDAP
+	 * Get DN for LDAP username.
 	 *
-	 * @param string $username        username used for binding
-	 * @param string &$ldapUser       LDAP username
-	 * @param string &$ldapName       LDAP realname
-	 * @param string &$ldapEmail      LDAP email
-	 * @param string &$errorMessage   any error message for the user
-	 *
-	 * @return string|null            the LDAP DN if successful
+	 * @param string $username        Username used for binding
+	 * @param string &$errorMessage   Error message to show the user
+	 * @return string|null            Corresponding LDAP DN if successful
 	 */
-	protected function forwardLookup(
-		string $username,
-		?string &$ldapUser, ?string &$ldapName, ?string &$ldapEmail,
-		?string &$errorMessage
-	): ?string {
-		$userAttr = $this->getConfig( static::CONFIG_NAME_ATTR, 'uid' );
-		$realAttr = $this->getConfig( static::CONFIG_REALNAME_ATTR, 'cn' );
-		$emailAttr = $this->getConfig( static::CONFIG_EMAIL_ATTR, 'mail' );
-		$searchAttr = $this->getConfig( static::CONFIG_SEARCH_ATTR, 'uid' );
+	protected function lookupLDAPUser( string $username, ?string &$errorMessage ): ?string {
+		$errorMessage = null;
+		$bindAttr = $this->getConfig( static::CONFIG_BIND_ATTR );
 
-		$attributes = [ 'dn', $userAttr, $realAttr, $emailAttr ];
-		try {
-			$result = $this->searchLDAPUser( [ $searchAttr => $username ], $attributes );
-		} catch ( Exception $ex ) {
-			wfDebugLog( 'SimpleLDAPAuth', "Error fetching userinfo: {$ex->getMessage()}" );
-			wfDebugLog( 'SimpleLDAPAuth', $ex->getTraceAsString() );
-			$result = null;
+		if ( $bindAttr ) {
+			$baseDN = $this->getUserBaseDN();
+			$escapedUsername = LDAPClient::escape($username);
+			$dn = "{$bindAttr}={$escapedUsername}," . $baseDN;
+		} else {
+			$searchAttr = $this->getConfig( static::CONFIG_SEARCH_ATTR, 'uid' );
+			$attributes = [ 'dn' ];
+			try {
+				$result = $this->searchLDAPUser( [ $searchAttr => $username ], $attributes );
+			} catch ( Exception $ex ) {
+				wfDebugLog( 'SimpleLDAPAuth', "Error fetching userinfo: {$ex->getMessage()}" );
+				wfDebugLog( 'SimpleLDAPAuth', $ex->getTraceAsString() );
+				$result = null;
+			}
+			$dn = $result ? $result["dn"] : null;
 		}
-		if ( !$result ) {
-			$errorMessage = wfMessage(
-				'simpleldapauth-error-authentication-failed-userinfo', $this->domain
-			)->text();
-			return null;
-		}
-
-		/* Update variables */
-		$ldapUser = $result[$userAttr][0] ?? $username;
-		$ldapName = $result[$realAttr][0] ?? '';
-		$ldapEmail = $result[$emailAttr][0] ?? '';
-		return $result['dn'];
+		return $dn;
 	}
 
 	/**
 	 * Map LDAP attributes to a user, existing or new
-	 * @param string $dn              LDAP DN
-	 * @param string $username        LDAP username
-	 * @param string $realname        LDAP realname
-	 * @param string $email           LDAP realname
-	 * @param string &$errorMessage   any error message for the user
 	 *
-	 * @return User|null              the user if successful
+	 * @param string  $dn               LDAP DN
+	 * @param ?UserIdentity &$userHint  Suggested username for linking or creation if failed
+	 * @param ?string &$errorMessage    Error message to show the user if failed
+	 * @return User|null                Mapped user if successful
 	 */
-	protected function forwardMap(
-		string $dn, string $username, string $realname, string $email,
-		?string &$errorMessage
-	): ?User {
+	protected function forwardMap( string $dn, ?UserIdentity &$userHint, ?string &$errorMessage ): ?User {
+		$userHint = null;
+		$errorMessage = null;
+
 		/* First try to find the user in our mapping store. */
 		$user = $this->linkStore->getUserForDN( $this->domain, $dn );
 		if ( $user ) {
 			return $user;
 		}
 
-		/* Not mapped yet, try to find an existing user. */
+		/* Not mapped yet, get some info about our user */
+		$userAttr = $this->getConfig( static::CONFIG_NAME_ATTR, 'uid' );
+		$realAttr = $this->getConfig( static::CONFIG_REALNAME_ATTR, 'cn' );
+		$emailAttr = $this->getConfig( static::CONFIG_EMAIL_ATTR, 'mail' );
+		try {
+			$result = $this->getLDAPUser( $dn, [ $userAttr, $realAttr, $emailAttr ] );
+		} catch ( Exception $ex ) {
+			wfDebugLog( 'SimpleLDAPAuth', "Error fetching userinfo: {$ex->getMessage()}" );
+			wfDebugLog( 'SimpleLDAPAuth', $ex->getTraceAsString() );
+			$result = null;
+		}
+		if ( $result === null ) {
+			$errorMessage = wfMessage(
+				'ext.simpleldapauth.error.authentication.userinfo', $this->domain
+			)->text();
+			return null;
+		}
+		$username = $result[$userAttr][0];
+		$email = $result[$emailAttr][0];
+		$realname = $result[$realAttr][0];
+
+		/* Try to map it to an existing user */
 		$mapType = $this->getConfig( static::CONFIG_MAP_TYPE, static::MAPTYPE_NAME );
 		switch ($mapType) {
 		case static::MAPTYPE_NAME:
-			$user = $this->userFinder->getUserByName( $username );
+			$newUsername = $this->userNameUtils->getCanonical( $username, UserNameUtils::RIGOR_USABLE );
+			$user = $newUsername ? $this->userFinder->getUserByName( $newUsername ) : null;
 			break;
 		case static::MAPTYPE_EMAIL:
 			if ( !$email ) {
 				$errorMessage = wfMessage(
-					'simpleldapauth-error-authentication-failed-userinfo', $this->domain
+					'ext.simpleldapauth.error.authentication.userinfo', $this->domain
 				)->text();
 				wfDebugLog( 'SimpleLDAPAuth', "Mapping for {$username} failed: email attribute empty" );
 				return null;
@@ -218,7 +239,7 @@ class LDAPUserMapper {
 		case static::MAPTYPE_REALNAME:
 			if ( !$realname ) {
 				$errorMessage = wfMessage(
-					'simpleldapauth-error-authentication-failed-userinfo', $this->domain
+					'ext.simpleldapauth.error.authentication.userinfo', $this->domain
 				)->text();
 				wfDebugLog( 'SimpleLDAPAuth', "Mapping for {$username} failed: realname attribute empty" );
 				return null;
@@ -227,39 +248,30 @@ class LDAPUserMapper {
 			break;
 		default:
 			$errorMessage = wfMessage(
-				'simpleldapauth-error-configuration', $this->domain
+				'ext.simpleldapauth.error.configuration', $this->domain
 			)->text();
 			wfDebugLog( 'SimpleLDAPAuth', "Invalid map type: $mapType" );
 			return null;
 		}
-		if ($user) {
-			if ( $this->linkStore->isUserLinked( $user ) ) {
-				/* User is already mapped to another user */
-				$errorMessage = wfMessage(
-					'simpleldapauth-error-authentication-map-collision'
-				)->text();
-				wfDebugLog( 'SimpleLDAPAuth', "Username {$username} already mapped, not overwriting" );
-				return null;
-			}
+		/* Only return if target user is not already linked */
+		if ( $user && !$this->linkStore->isUserLinked( $user, $this->domain ) ) {
+			/* Store fresh new link and return */
+			$this->linkStore->linkUser( $user, $this->domain, $dn );
 			return $user;
 		}
 
-		/* Does not exist either, create a new one if and only if a same username does not exist yet. */
-		if ( $this->userFinder->getUserByName( $username ) ) {
-			$errorMessage = wfMessage(
-				'simpleldapauth-error-authentication-attr-collision', $mapType
-			)->text();
-			wfDebugLog( 'SimpleLDAPAuth', "Username {$username} already taken, not overwriting" );
-			return null;
+		/* No match found! Try to find a hint. */
+		$usernameHint = $this->userNameUtils->getCanonical( $username, UserNameUtils::RIGOR_CREATABLE );
+		if ( $usernameHint ) {
+			$userHint = $this->userFinder->getUserByName( $usernameHint );
+			if ( !$userHint ) {
+				$userHint = $this->userFactory->newFromName( $usernameHint, UserNameUtils::RIGOR_CREATABLE );
+			} else if ( $this->linkStore->isUserLinked( $userHint, $this->domain ) ) {
+				/* Don't hint if hinted-at user exists and is already linked. */
+				$userHint = null;
+			}
 		}
-		$user = $this->userFinder->getUserFactory()->newFromName( $username );
-		if ( $email ) {
-			$user->setEmail( $email );
-		}
-		if ( $realname ) {
-			$user->setRealName( $realname );
-		}
-		return $user;
+		return null;
 	}
 
 	/**
@@ -297,7 +309,7 @@ class LDAPUserMapper {
 			break;
 		default:
 			$errorMessage = wfMessage(
-				'simpleldapauth-error-configuration', $this->domain
+				'ext.simpleldapauth.error.configuration', $this->domain
 			)->text();
 			wfDebugLog( 'SimpleLDAPAuth', "Invalid map type: $mapType" );
 			return null;
@@ -305,7 +317,7 @@ class LDAPUserMapper {
 
 		if ( !$searchValue ) {
 			$errorMessage = wfMessage(
-				'simpleldapauth-error-authentication-failed-userinfo', $this->domain
+				'ext.simpleldapauth.error.authentication.userinfo', $this->domain
 			)->text();
 			wfDebugLog( 'SimpleLDAPAuth', "Reverse mapping for {$user->getName()} failed: {$mapType} attribute empty" );
 			return null;
@@ -339,6 +351,19 @@ class LDAPUserMapper {
 		} else {
 			return $rdn;
 		}
+	}
+
+	/*
+	 * Read a single user on LDAP.
+	 *
+	 * @param array $dn               User DN to read
+	 * @param array|null $attributes  Attributes to return
+	 * @return array|null             The requested attributes if successful
+	 */
+	protected function getLDAPUser( string $dn, ?array $attributes ): ?array {
+		$searchFilter = $this->getConfig( static::CONFIG_SEARCH_FILTER );
+		$filters = $searchFilter ? [ $searchFilter ] : null;
+		return $this->ldapClient->read( $dn, $attributes, $filters );
 	}
 
 	/*

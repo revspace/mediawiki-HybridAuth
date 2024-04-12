@@ -5,13 +5,20 @@
 			"Shiz <hi@shiz.me>"
 		]
 	},
-	"simpleldapauth-desc": "Allows authentication against a LDAP resource",
-	"simpleldapauth-error-authentication-failed": "Could not authenticate credentials against LDAP domain \"$1\".",
-	"simpleldapauth-error-authentication-failed-userinfo": "Could not fetch required user info to complete LDAP login.",
-	"simpleldapauth-error-authentication-attr-collision": "Existing local user collision: please login locally and match your $1, or register a new user with matching $1.",
-	"simpleldapauth-error-authentication-map-collision": "Existing local user collision: another LDAP user is already mapped to that local user. Please contact your system administrator.",
-	"simpleldapauth-error-configuration": "LDAP configuration error, please contact your system administrator.",
-	"simpleldapauth-no-domain-chosen": "Please choose a valid domain!",
+	"ext.simpleldapauth.desc": "Allows authentication against a LDAP resource",
+
+	"ext.simpleldapauth.error.configuration": "LDAP configuration error. Please contact your system administrator.",
+
+	"ext.simpleldapauth.error.authentication.credentials": "Could not authenticate credentials against LDAP domain \"$1\".",
+	"ext.simpleldapauth.error.authentication.userinfo": "Could not fetch required user info to complete LDAP login.",
+
+	"ext.simpleldapauth.error.map.not-linking": "Found local user, but can not verify match. Please login locally and match your attributes, or register a new user with matching attributes.",
+	"ext.simpleldapauth.error.map.not-creating": "Could not find local user to map to and creation is disabled.",
+
+	"ext.simpleldapauth.error.change.bad-action": "Invalid change action: $1.",
+	"ext.simpleldapauth.error.change.bad-domain": "Invalid domain: $1.",
+
+	"ext.simpleldapauth.form.domain-label": "LDAP: $1",
 
 	"apihelp-ext.simpleldapauth.unlink-summary": "Unlink LDAP user from MediaWiki user",
 	"apihelp-ext.simpleldapauth.unlink-extended-description": "This API can be called to unlink the LDAP <-> MediaWiki user mapping for a given LDAP user.",

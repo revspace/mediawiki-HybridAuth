@@ -10,5 +10,5 @@ CREATE TABLE /*_*/ldap_simpleauth_link (
 
 ) /*$wgDBTableOptions*/;
 
-CREATE UNIQUE INDEX /*i*/user_id on /*_*/ldap_simpleauth_link (user_id);
+CREATE INDEX /*i*/user_id on /*_*/ldap_simpleauth_link (user_id);
 CREATE INDEX /*i*/link on /*_*/ldap_simpleauth_link (domain, dn);

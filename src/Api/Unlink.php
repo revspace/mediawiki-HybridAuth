@@ -28,8 +28,8 @@ class Unlink extends Base {
 		$params = $this->extractRequestParams();
 		$dn = $params["dn"];
 
-		$domain = $this->getDomain();
-		$this->ldapAuthManager->unlinkUserDN( $domain, $dn );
+		$ldapAuthDomain = $this->getLDAPAuthDomain();
+		$ldapAuthDomain->unlinkUserByDN( $dn );
 
 		$res = [ 'ok' => true ];
 		$this->getResult()->addValue( null, $this->getModuleName(), $res  );

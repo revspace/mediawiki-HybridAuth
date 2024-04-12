@@ -1,16 +1,16 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth;
+namespace MediaWiki\Extension\SimpleLDAPAuth\Auth;
 
 use Exception;
 use MWException;
 use User;
 
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\Extension\SimpleLDAPAuth\LDAPAuthDomain;
+use MediaWiki\Extension\SimpleLDAPAuth\LDAPAuthManager;
 use MediaWiki\Logger\LoggerFactory;
-use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
-use Wikimedia\Rdbms\ILoadBalancer;
 
 use MediaWiki\Extension\PluggableAuth\PluggableAuth;
 use MediaWiki\Extension\PluggableAuth\PluggableAuthLogin;
@@ -32,28 +32,25 @@ class LDAPPluggableAuth extends PluggableAuth {
 	 */
 	private $ldapAuthManager;
 
-	public function __construct( AuthManager $authManager, UserFactory $userFactory, ILoadBalancer $loadBalancer ) {
+	/**
+	 * @var ?LDAPAuthDomain
+	 */
+	private $ldapAuthDomain;
+
+	public function __construct( AuthManager $authManager, LDAPAuthManager $ldapAuthManager ) {
 		$this->setLogger( LoggerFactory::getInstance( 'SimpleLDAPAuth' ) );
 		$this->authManager = $authManager;
-		$this->ldapAuthManager = new LDAPAuthManager( $loadBalancer, $userFactory );
+		$this->ldapAuthManager = $ldapAuthManager;
+		$this->ldapAuthDomain = null;
 	}
 
-	protected function getDomain( ): string {
-		$name = $this->getConfigId();
-		$config = $this->getData();
-		return $this->ldapAuthManager->getDomain( $name, $config );
-	}
-
-	protected function getUserMapper( ): LDAPUserMapper {
-		$name = $this->getConfigId();
-		$config = $this->getData();
-		return $this->ldapAuthManager->getUserMapper( $name, $config );
-	}
-
-	protected function getGroupMapper( ): LDAPGroupMapper {
-		$name = $this->getConfigId();
-		$config = $this->getData();
-		return $this->ldapAuthManager->getGroupMapper( $name, $config );
+	protected function getLDAPAuthDomain( ): LDAPAuthDomain {
+		if ( !$this->ldapAuthDomain ) {
+			$name = $this->getConfigId();
+			$config = $this->getData();
+			$this->ldapAuthDomain = $this->ldapAuthManager->getAuthDomain( $name, $config );
+		}
+		return $this->ldapAuthDomain;
 	}
 
 	/**
@@ -71,17 +68,58 @@ class LDAPPluggableAuth extends PluggableAuth {
 		$extraLoginFields = $this->authManager->getAuthenticationSessionData(
 			PluggableAuthLogin::EXTRALOGINFIELDS_SESSION_KEY
 		);
-
 		$username = $extraLoginFields[static::FORMFIELD_USERNAME] ?? '';
 		$password = $extraLoginFields[static::FORMFIELD_PASSWORD] ?? '';
-		$user = $this->getUserMapper()->authenticate( $username, $password, $dn, $errorMessage );
-		if ( !$user ) {
+		if ( !$username || !$password ) {
 			return false;
+		}
+
+		$ldapAuthDomain = $this->getLDAPAuthDomain();
+		if ( !$ldapAuthDomain ) {
+			return false;
+		}
+
+		/* Verify user is who they say they are first */
+		$errorMessage = null;
+		$dn = $ldapAuthDomain->authenticateLDAPUser( $username, $password, $errorMessage );
+		if ( !$dn ) {
+			if ( !$errorMessage ) {
+				$errorMessage = wfMessage(
+					'ext.simpleldapauth.error.authentication.credentials', $this->domain
+				)->text();
+			}
+			return false;
+		}
+
+		/* Now, let's try mapping */
+		$userHint = null;
+		$user = $ldapAuthDomain->mapUserFromDN( $dn, $userHint, $errorMessage );
+		if ( !$user ) {
+			/* No user found, but maybe the user hint can help us */
+			if ( $userHint->isRegistered() ) {
+				/* Hinted-at user already exists and we can't do manual confirmation, so reject the attempt. :( */
+				$errorMessage = wfMessage(
+					'ext.simpleldapauth.error.map.not-linking', $userHint->getName()
+				)->text();
+				$this->getLogger()->warning(
+					"Username {username} mapped to collided user {collidedUsername}, not overwriting",
+					[ 'username' => $username, 'collidedUsername' => $userHint->getName() ]
+				);
+				return false;
+			}
+			/* Hinted user does not exist yet! Only proceed to create it if that is within our policy. */
+			if ( !$ldapAuthDomain->shouldAutoCreateUser() ) {
+				if ( !$errorMessage ) {
+					$errorMessage = wfMessage( 'ext.simpleldapauth.error.map.not-creating' );
+				}
+				return false;
+			}
+			/* Proceed with hinted-at user */
+			$user = $userHint;
 		}
 
 		/* This is a workaround: As "PluggableAuthUserAuthorization" hook is
 		 * being called before PluggableAuth::saveExtraAttributes (see below)
-		 * we can not rely on UserLinkStore here. Further complicating things,
 		 * we can not persist the domain here, as the user id may be null (first login)
 		 */
 		$this->authManager->setAuthenticationSessionData(
@@ -92,7 +130,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 		/* If we matched to an existing user, overwrite attributes,
 		 * else leave them intact from the LDAP query.
 		 */
-		if ( $user->getId() !== 0 ) {
+		if ( $user->isRegistered() ) {
 			$id = $user->getId();
 			$username = $user->getName();
 			$realname = $user->getRealName();
@@ -120,15 +158,15 @@ class LDAPPluggableAuth extends PluggableAuth {
 	 */
 	public function getAttributes( UserIdentity $user ): array {
 		$errorMessage = null;
-		$attributes = $this->getUserMapper()->getAttributes( $user, $errorMessage );
+		$attributes = []; // TODO: $this->getUserMapper()->getAttributes( $user, $errorMessage );
 		return $attributes;
 	}
 
 	/**
 	 * @param int $userId for user
 	 */
-	public function saveExtraAttributes( int $userId ): void {
-		$domain = $this->getDomain();
+	public function saveExtraAttributes( int $userID ): void {
+		$ldapAuthDomain = $this->getLDAPAuthDomain();
 		$dn = $this->authManager->getAuthenticationSessionData(
 			static::SESSIONKEY_DN
 		);
@@ -138,7 +176,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 		 * This can also not be a local login attempt as it would be caught in `authenticate`.
 		 */
 		if ( $dn !== null ) {
-			$this->ldapAuthManager->linkUserID( $userId, $domain, $dn );
+			$ldapAuthDomain->linkUserByID( $userID, $dn );
 		}
 	}
 
