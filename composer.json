@@ -1,12 +1,12 @@
 {
-	"name": "revspace/mediawiki-SimpleLDAPAuth",
+	"name": "revspace/mediawiki-HybridLDAPAuth",
 	"extra": {
-		"installer-name": "SimpleLDAPAuth"
+		"installer-name": "HybridLDAPAuth"
 	},
 	"license": "GPL-2.0+",
 	"type": "mediawiki-extension",
-	"homepage": "https://github.com/revspace/mediawiki/SimpleLDAPAuth",
-	"description": "Simple authentication and authorization against an LDAP resource",
+	"homepage": "https://github.com/revspace/mediawiki-HybridLDAPAuth",
+	"description": "Hybrid authentication and authorization against LDAP resources",
 	"keywords": [
 		"extension",
 		"wiki",

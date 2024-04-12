@@ -1,14 +1,14 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth\Auth;
+namespace MediaWiki\Extension\HybridLDAPAuth\Auth;
 
 use Exception;
 use MWException;
 use User;
 
 use MediaWiki\Auth\AuthManager;
-use MediaWiki\Extension\SimpleLDAPAuth\LDAPAuthDomain;
-use MediaWiki\Extension\SimpleLDAPAuth\LDAPAuthManager;
+use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthDomain;
+use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthManager;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\User\UserIdentity;
 
@@ -16,8 +16,8 @@ use MediaWiki\Extension\PluggableAuth\PluggableAuth;
 use MediaWiki\Extension\PluggableAuth\PluggableAuthLogin;
 
 
-class LDAPPluggableAuth extends PluggableAuth {
-	const SESSIONKEY_DN = 'ldap-simpleauth-selected-dn';
+class PluggableLDAPAuthProvider extends PluggableAuth {
+	const SESSIONKEY_DN = 'ext.hybridldap.auth.pluggable.selected-dn';
 
 	const FORMFIELD_USERNAME = 'ldap_username';
 	const FORMFIELD_PASSWORD = 'ldap_password';
@@ -38,7 +38,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 	private $ldapAuthDomain;
 
 	public function __construct( AuthManager $authManager, LDAPAuthManager $ldapAuthManager ) {
-		$this->setLogger( LoggerFactory::getInstance( 'SimpleLDAPAuth' ) );
+		$this->setLogger( LoggerFactory::getInstance( 'HybridLDAPAuth.Pluggable' ) );
 		$this->authManager = $authManager;
 		$this->ldapAuthManager = $ldapAuthManager;
 		$this->ldapAuthDomain = null;
@@ -85,7 +85,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 		if ( !$dn ) {
 			if ( !$errorMessage ) {
 				$errorMessage = wfMessage(
-					'ext.simpleldapauth.error.authentication.credentials', $this->domain
+					'ext.hybridldap.auth.credential-error', $this->domain
 				)->text();
 			}
 			return false;
@@ -99,7 +99,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 			if ( $userHint->isRegistered() ) {
 				/* Hinted-at user already exists and we can't do manual confirmation, so reject the attempt. :( */
 				$errorMessage = wfMessage(
-					'ext.simpleldapauth.error.map.not-linking', $userHint->getName()
+					'ext.hybridldap.map.not-linking', $userHint->getName()
 				)->text();
 				$this->getLogger()->warning(
 					"Username {username} mapped to collided user {collidedUsername}, not overwriting",
@@ -110,7 +110,7 @@ class LDAPPluggableAuth extends PluggableAuth {
 			/* Hinted user does not exist yet! Only proceed to create it if that is within our policy. */
 			if ( !$ldapAuthDomain->shouldAutoCreateUser() ) {
 				if ( !$errorMessage ) {
-					$errorMessage = wfMessage( 'ext.simpleldapauth.error.map.not-creating' );
+					$errorMessage = wfMessage( 'ext.hybridldap.map.not-creating' );
 				}
 				return false;
 			}

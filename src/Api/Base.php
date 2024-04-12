@@ -1,13 +1,13 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth\Api;
+namespace MediaWiki\Extension\HybridLDAPAuth\Api;
 
 use ApiBase;
 use ApiMain;
-use MediaWiki\Extension\SimpleLDAPAuth\LDAPAuthManager;
-use MediaWiki\Extension\SimpleLDAPAuth\LDAPGroupMapper;
-use MediaWiki\Extension\SimpleLDAPAuth\LDAPUserMapper;
-use MediaWiki\Extension\SimpleLDAPAuth\UserLinkStore;
+use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthManager;
+use MediaWiki\Extension\HybridLDAPAuth\LDAPGroupMapper;
+use MediaWiki\Extension\HybridLDAPAuth\LDAPUserMapper;
+use MediaWiki\Extension\HybridLDAPAuth\UserLinkStore;
 
 abstract class Base extends ApiBase {
 	public function __construct( ApiMain $mainModule, $moduleName ) {

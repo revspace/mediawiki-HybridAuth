@@ -1,12 +1,12 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth;
+namespace MediaWiki\Extension\HybridLDAPAuth;
 
 use Config;
 use HashConfig;
 use User;
-use MediaWiki\Extension\SimpleLDAPAuth\Lib\LDAPClient;
-use MediaWiki\Extension\SimpleLDAPAuth\Lib\UserFinder;
+use MediaWiki\Extension\HybridLDAPAuth\Lib\LDAPClient;
+use MediaWiki\Extension\HybridLDAPAuth\Lib\UserFinder;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserNameUtils;

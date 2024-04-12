@@ -1,4 +1,4 @@
-CREATE TABLE ldap_simpleauth_link (
+CREATE TABLE ext_hybridldap_user_link (
 	-- LDAP domain
 	domain varchar(255) not null,
 
@@ -10,5 +10,5 @@ CREATE TABLE ldap_simpleauth_link (
 
 ) /*$wgDBTableOptions*/;
 
-CREATE INDEX user_id on ldap_simpleauth_link (user_id);
-CREATE INDEX link on ldap_simpleauth_link (domain, dn);
+CREATE INDEX user_id on ext_hybridldap_user_link (user_id);
+CREATE INDEX link on ext_hybridldap_user_link (domain, dn);

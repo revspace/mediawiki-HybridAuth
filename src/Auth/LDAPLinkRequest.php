@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth\Auth;
+namespace MediaWiki\Extension\HybridLDAPAuth\Auth;
 
 use RawMessage;
 use MediaWiki\Auth\AuthManager;
@@ -23,7 +23,7 @@ class LDAPLinkRequest extends AuthenticationRequest {
 			return [
 				'domain' => [
 					'type' => 'button',
-					'label' => wfMessage( 'ext.simpleldapauth.form.domain-label',  [ $this->domain ] ),
+					'label' => wfMessage( 'ext.hybridldap.provider-domain-label', [ $this->domain ] ),
 					'help' => new RawMessage( '' )
 				]
 			];
@@ -34,10 +34,10 @@ class LDAPLinkRequest extends AuthenticationRequest {
 
 	public function describeCredentials(): array {
 		return [
-			'provider' => new RawMessage( '$1', [ 'LDAP' ] ),
+			'provider' => wfMessage( 'ext.hybridldap.provider-label' ),
 			'account' => $this->dn
-				? new RawMessage( '$1: $2', [ $this->domain, $this->dn ] )
-				: new RawMessage( '$1', [ $this->domain ] ),
+				? wfMessage( 'ext.hybridldap.account-label', [ $this->domain, $this->dn ] )
+				: wfMessage( 'ext.hybridldap.domain-label', [ $this->domain ] ),
 		];
 	}
 }

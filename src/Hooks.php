@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth;
+namespace MediaWiki\Extension\HybridLDAPAuth;
 
 use DatabaseUpdater;
 
@@ -27,7 +27,7 @@ class Hooks {
 					return false;
 			}
 			$updater->addExtensionTable(
-				"ldap_simpleauth_{$table}", $schemaFile
+				"ext_hybridldap_{$table}", $schemaFile
 			);
 			break;
 		}

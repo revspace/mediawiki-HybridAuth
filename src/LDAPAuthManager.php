@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth;
+namespace MediaWiki\Extension\HybridLDAPAuth;
 
 use Config;
 use HashConfig;
@@ -10,7 +10,7 @@ use MediaWiki\User\UserNameUtils;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 class LDAPAuthManager {
-	const SERVICE_NAME = 'SimpleLDAPAuth.LDAPAuthManager';
+	const SERVICE_NAME = 'HybridLDAPAuth.LDAPAuthManager';
 
 	/**
 	 * @var ILoadBalancer

@@ -1,11 +1,10 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth\Auth;
+namespace MediaWiki\Extension\HybridLDAPAuth\Auth;
 
 use RawMessage;
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\PasswordAuthenticationRequest;
-use MediaWiki\Extension\SimpleLDAPAuth\LDAPAuthManager;
 
 class LDAPAuthRequest extends PasswordAuthenticationRequest {
 	public function __construct ( array $domains ) {
@@ -18,14 +17,26 @@ class LDAPAuthRequest extends PasswordAuthenticationRequest {
 			return [];
 		}
 
-		$fields = parent::getFieldInfo();
+		$fields = [
+			'username' => [
+				'type' => 'string',
+				'label' => wfMessage( 'userlogin-yourname' ),
+				'help' => wfMessage( 'authmanager-username-help' ),
+			],
+			'password' => [
+				'type' => 'password',
+				'label' => wfMessage( 'userlogin-yourpassword' ),
+				'help' => wfMessage( 'authmanager-password-help' ),
+				'sensitive' => true,
+			],
+		];
 
 		$domainValues = [];
-		if ( $this->action === AuthManager::ACTION_LOGIN || $this->action === AuthManager::ACTION_LOGIN_CONTINUE ) {
-			$domainValues[''] = new RawMessage( 'Local' );
+		if ( $this->action === AuthManager::ACTION_LOGIN ) {
+			$domainValues[''] = wfMessage( 'ext.hybridldap.local-domain-label' );
 		}
 		foreach ( $this->domains as $domain ) {
-			$domainValues['ldap.' . $domain] = wfMessage( 'ext.simpleldapauth.form.domain-label', [ $domain ] );
+			$domainValues['ldap.' . $domain] = wfMessage( 'ext.hybridldap.provider-domain-label', [ $domain ] );
 		}
 		$fields['domain'] = [
 			'type' => 'select',
@@ -40,8 +51,8 @@ class LDAPAuthRequest extends PasswordAuthenticationRequest {
 
 	public function describeCredentials(): array {
 		return [
-			'provider' => new RawMessage( '$1', [ 'LDAP' ] ),
-			'account' => new RawMessage( '$1', [ $this->domain ] ),
+			'provider' => wfMessage( 'ext.hybridldap.provider-label' ),
+			'account' => wfMessage( 'ext.hybridldap.domain-label', [ $this->domain ] ),
 		];
 	}
 

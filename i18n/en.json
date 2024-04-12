@@ -5,23 +5,30 @@
 			"Shiz <hi@shiz.me>"
 		]
 	},
-	"ext.simpleldapauth.desc": "Allows authentication against a LDAP resource",
 
-	"ext.simpleldapauth.error.configuration": "LDAP configuration error. Please contact your system administrator.",
+	"ext.hybridldap.auth-desc": "Hybrid authentication and authorization against LDAP resourcese",
+	"ext.hybridldap.configuration-error": "LDAP configuration error. Please contact your system administrator.",
 
-	"ext.simpleldapauth.error.authentication.credentials": "Could not authenticate credentials against LDAP domain \"$1\".",
-	"ext.simpleldapauth.error.authentication.userinfo": "Could not fetch required user info to complete LDAP login.",
+	"ext.hybridldap.auth.credential-error": "Could not authenticate credentials against LDAP domain \"$1\".",
+	"ext.hybridldap.auth.userinfo-error": "Could not fetch required user info to complete LDAP login.",
 
-	"ext.simpleldapauth.error.map.not-linking": "Found local user, but can not verify match. Please login locally and match your attributes, or register a new user with matching attributes.",
-	"ext.simpleldapauth.error.map.not-creating": "Could not find local user to map to and creation is disabled.",
+	"ext.hybridldap.map.not-linking": "Found local user, but can not verify match. Please login locally and match your attributes, or register a new user with matching attributes.",
+	"ext.hybridldap.map.not-creating": "Could not find local user to map to and creation is disabled.",
 
-	"ext.simpleldapauth.error.change.bad-action": "Invalid change action: $1.",
-	"ext.simpleldapauth.error.change.bad-domain": "Invalid domain: $1.",
+	"ext.hybridldap.update.action-error": "Invalid change action: $1.",
+	"ext.hybridldap.update.domain-error": "Invalid domain: $1.",
 
-	"ext.simpleldapauth.form.domain-label": "LDAP: $1",
+	"ext.hybridldap.local-domain-label": "(Local)",
+	"ext.hybridldap.provider-label": "LDAP",
+	"ext.hybridldap.provider-domain-label": "LDAP: $1",
+	"ext.hybridldap.domain-label": "$1",
+	"ext.hybridldap.account-label": "$1: $2",
 
-	"apihelp-ext.simpleldapauth.unlink-summary": "Unlink LDAP user from MediaWiki user",
-	"apihelp-ext.simpleldapauth.unlink-extended-description": "This API can be called to unlink the LDAP <-> MediaWiki user mapping for a given LDAP user.",
-	"apihelp-ext.simpleldapauth.unlink-param-domain": "LDAP domain",
-	"apihelp-ext.simpleldapauth.unlink-param-dn": "LDAP DN"
+	"ext.hybridldap.attr-label": "$1",
+	"ext.hybridldap.attr-help": "LDAP '$1' attribute",
+
+	"apihelp-ext.hybridldap.unlink-summary": "Unlink LDAP user from MediaWiki user",
+	"apihelp-ext.hybridldap.unlink-extended-description": "This API can be called to unlink the LDAP <-> MediaWiki user mapping for a given LDAP user.",
+	"apihelp-ext.hybridldap.unlink-param-domain": "LDAP domain",
+	"apihelp-ext.hybridldap.unlink-param-dn": "LDAP DN"
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth;
+namespace MediaWiki\Extension\HybridLDAPAuth;
 
 use MediaWiki\MediaWikiServices;
 

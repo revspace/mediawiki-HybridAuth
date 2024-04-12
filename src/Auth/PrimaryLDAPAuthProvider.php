@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth\Auth;
+namespace MediaWiki\Extension\HybridLDAPAuth\Auth;
 
 use Exception;
 use MWException;
@@ -11,13 +11,13 @@ use MediaWiki\Auth\AbstractPrimaryAuthenticationProvider;
 use MediaWiki\Auth\AuthenticationRequest;
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\AuthManager;
-use MediaWiki\Extension\SimpleLDAPAuth\LDAPAuthDomain;
-use MediaWiki\Extension\SimpleLDAPAuth\LDAPAuthManager;
+use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthDomain;
+use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthManager;
 use MediaWiki\Logger\LoggerFactory;
 
-class LDAPAuthProvider extends AbstractPrimaryAuthenticationProvider {
-	const SESSIONKEY_DOMAIN = 'ldap-simpleauth-selected-domain';
-	const SESSIONKEY_DN = 'ldap-simpleauth-selected-dn';
+class LDAPPrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
+	const SESSIONKEY_DOMAIN = 'ext.hybridldap.auth.primary.selected-domain';
+	const SESSIONKEY_DN     = 'ext.hybridldap.auth.primary.selected-dn';
 
 	/**
 	 * @var LDAPAuthManager
@@ -29,7 +29,7 @@ class LDAPAuthProvider extends AbstractPrimaryAuthenticationProvider {
 	private $authorative;
 
 	public function __construct( LDAPAuthManager $ldapAuthManager, bool $authorative = false ) {
-		$this->setLogger( LoggerFactory::getInstance( 'SimpleLDAPAuth' ) );
+		$this->setLogger( LoggerFactory::getInstance( 'HybridLDAPAuth.Provider' ) );
 		$this->ldapAuthManager = $ldapAuthManager;
 		$this->authorative = $authorative;
 	}
@@ -104,7 +104,7 @@ class LDAPAuthProvider extends AbstractPrimaryAuthenticationProvider {
 		if ( !$dn ) {
 			if ( $this->authorative && !$errorMessage ) {
 				$errorMessage = wfMessage(
-					'ext.simpleldapauth.error.authentication.credentials', $domain
+					'ext.hybridldap.error.authentication.credentials', $domain
 				)->text();
 			}
 			if ( $errorMessage ) {
@@ -191,7 +191,7 @@ class LDAPAuthProvider extends AbstractPrimaryAuthenticationProvider {
 		if ( !$dn ) {
 			if ( $this->authorative && !$errorMessage ) {
 				$errorMessage = wfMessage(
-					'ext.simpleldapauth.error.authentication.credentials', $domain
+					'ext.hybridldap.error.authentication.credentials', $domain
 				)->text();
 			}
 			if ( $errorMessage ) {
@@ -207,7 +207,7 @@ class LDAPAuthProvider extends AbstractPrimaryAuthenticationProvider {
 			if ( $linkedUser->getUserId() != $user->getUserId() ) {
 				/* Already linked to another user, bail */
 				$errorMessage = wfMessage(
-					'ext.simpleldapauth.error.map.not-linking', $domain
+					'ext.hybridldap.error.map.not-linking', $domain
 				)->text();
 				return AuthenticationResponse::newFail( $errorMessage );
 			} else {
@@ -272,7 +272,7 @@ class LDAPAuthProvider extends AbstractPrimaryAuthenticationProvider {
 				break;
 			default:
 				return StatusValue::newFatal(
-					wfMessage( 'ext.simpleldapauth.error.change.bad-action', [ $req->action ] )
+					wfMessage( 'ext.hybridldap.error.change.bad-action', [ $req->action ] )
 				);
 			}
 
@@ -283,17 +283,17 @@ class LDAPAuthProvider extends AbstractPrimaryAuthenticationProvider {
 				$domains = $this->ldapAuthManager->getAllDomains();
 				if ( !$req->domain ) {
 					return StatusValue::newFatal(
-						wfMessage( 'ext.simpleldapauth.error.change.missing-domain' )
+						wfMessage( 'ext.hybridldap.error.change.missing-domain' )
 					);
 				}
 				if ( ! in_array( $req->domain, $domains ) ) {
 					return StatusValue::newFatal(
-						wfMessage( 'ext.simpleldapauth.error.change.bad-domain', [ $req->domain ] )
+						wfMessage( 'ext.hybridldap.error.change.bad-domain', [ $req->domain ] )
 					);
 				}
 				if ( $req->action == AuthManager::ACTION_LINK && !$req->dn ) {
 					return StatusValue::newFatal(
-						wfMessage( 'ext.simpleldapauth.error.change.missing-dn' )
+						wfMessage( 'ext.hybridldap.error.change.missing-dn' )
 					);
 				}
 			}

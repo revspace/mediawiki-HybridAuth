@@ -1,15 +1,18 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth;
+namespace MediaWiki\Extension\HybridLDAPAuth;
 
 use Config;
 use User;
-use MediaWiki\Extension\SimpleLDAPAuth\Lib\LDAPClient;
-use MediaWiki\Extension\SimpleLDAPAuth\Lib\UserFinder;
+use MediaWiki\Extension\HybridLDAPAuth\Lib\LDAPClient;
+use MediaWiki\Extension\HybridLDAPAuth\Lib\UserFinder;
+use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\User\UserNameUtils;
+use Psr\Log\LoggerInterface;
+use Psr\Log\LoggerAwareInterface;
 use Wikimedia\Rdbms\ILoadBalancer;
 
-class LDAPUserMapper {
+class LDAPUserMapper implements LoggerAwareInterface {
 	const CONFIG_BASE_DN       = 'base_dn';
 	const CONFIG_BASE_RDN      = 'base_rdn';
 	const CONFIG_NAME_ATTR     = 'name_attr';
@@ -24,6 +27,11 @@ class LDAPUserMapper {
 	const MAPTYPE_NAME = 'username';
 	const MAPTYPE_EMAIL = 'email';
 	const MAPTYPE_REALNAME = 'realname';
+
+	/**
+	 * @var LoggerInterface
+	 */
+	protected $logger;
 
 	/**
 	 * @var string
@@ -63,12 +71,17 @@ class LDAPUserMapper {
 	 * @param UserLinkStore $linkStore    User link store for mapping
 	 */
 	public function __construct( string $domain, Config $config, UserNameUtils $userNameUtils, LDAPClient $ldapClient, UserFinder $userFinder, UserLinkStore $linkStore ) {
+		$this->setLogger( LoggerFactory::getInstance( 'HybridLDAPAuth.UserMapper' ) );
 		$this->domain = $domain;
 		$this->config = $config;
 		$this->userNameUtils = $userNameUtils;
 		$this->ldapClient = $ldapClient;
 		$this->userFinder = $userFinder;
 		$this->linkStore = $linkStore;
+	}
+
+	public function setLogger( LoggerInterface $logger ) {
+		$this->logger = $logger;
 	}
 
 	protected function getConfig( string $key, $default = null ) {
@@ -171,8 +184,12 @@ class LDAPUserMapper {
 			try {
 				$result = $this->searchLDAPUser( [ $searchAttr => $username ], $attributes );
 			} catch ( Exception $ex ) {
-				wfDebugLog( 'SimpleLDAPAuth', "Error fetching userinfo: {$ex->getMessage()}" );
-				wfDebugLog( 'SimpleLDAPAuth', $ex->getTraceAsString() );
+				$this->logger->error( 'Error searching userinfo for {username}', [
+					'username' => $username, 'exception' => $ex,
+				] );
+				$errorMessage = wfMessage(
+					'ext.hybridldap.auth.userinfo-error', $this->domain
+				)->text();
 				$result = null;
 			}
 			$dn = $result ? $result["dn"] : null;
@@ -205,13 +222,14 @@ class LDAPUserMapper {
 		try {
 			$result = $this->getLDAPUser( $dn, [ $userAttr, $realAttr, $emailAttr ] );
 		} catch ( Exception $ex ) {
-			wfDebugLog( 'SimpleLDAPAuth', "Error fetching userinfo: {$ex->getMessage()}" );
-			wfDebugLog( 'SimpleLDAPAuth', $ex->getTraceAsString() );
+			$this->logger->error( 'Error fetching userinfo for DN {dn}', [
+				'dn' => $dn, 'exception' => $ex,
+			] );
 			$result = null;
 		}
 		if ( $result === null ) {
 			$errorMessage = wfMessage(
-				'ext.simpleldapauth.error.authentication.userinfo', $this->domain
+				'ext.hybridldap.auth.userinfo-error', $this->domain
 			)->text();
 			return null;
 		}
@@ -229,9 +247,9 @@ class LDAPUserMapper {
 		case static::MAPTYPE_EMAIL:
 			if ( !$email ) {
 				$errorMessage = wfMessage(
-					'ext.simpleldapauth.error.authentication.userinfo', $this->domain
+					'ext.hybridldap.auth.userinfo-error', $this->domain
 				)->text();
-				wfDebugLog( 'SimpleLDAPAuth', "Mapping for {$username} failed: email attribute empty" );
+				$this->logger->notice( "Mapping for {$username} failed: email attribute empty" );
 				return null;
 			}
 			$user = $this->userFinder->getUserByEmail( $email );
@@ -239,18 +257,18 @@ class LDAPUserMapper {
 		case static::MAPTYPE_REALNAME:
 			if ( !$realname ) {
 				$errorMessage = wfMessage(
-					'ext.simpleldapauth.error.authentication.userinfo', $this->domain
+					'ext.hybridldap.auth.userinfo-error', $this->domain
 				)->text();
-				wfDebugLog( 'SimpleLDAPAuth', "Mapping for {$username} failed: realname attribute empty" );
+				$this->logger->notice( "Mapping for {$username} failed: realname attribute empty" );
 				return null;
 			}
 			$user = $this->userFinder->getUserByEmail( $realname );
 			break;
 		default:
 			$errorMessage = wfMessage(
-				'ext.simpleldapauth.error.configuration', $this->domain
+				'ext.hybridldap.configuration-error', $this->domain
 			)->text();
-			wfDebugLog( 'SimpleLDAPAuth', "Invalid map type: $mapType" );
+			$this->logger->critical( 'HybridLDAPAuth', "Invalid map type: $mapType" );
 			return null;
 		}
 		/* Only return if target user is not already linked */
@@ -309,25 +327,29 @@ class LDAPUserMapper {
 			break;
 		default:
 			$errorMessage = wfMessage(
-				'ext.simpleldapauth.error.configuration', $this->domain
+				'ext.hybridldap.configuration-error', $this->domain
 			)->text();
-			wfDebugLog( 'SimpleLDAPAuth', "Invalid map type: $mapType" );
+			$this->logger->critical( "Invalid map type: $mapType" );
 			return null;
 		}
 
 		if ( !$searchValue ) {
 			$errorMessage = wfMessage(
-				'ext.simpleldapauth.error.authentication.userinfo', $this->domain
+				'ext.hybridldap.auth.userinfo-error', $this->domain
 			)->text();
-			wfDebugLog( 'SimpleLDAPAuth', "Reverse mapping for {$user->getName()} failed: {$mapType} attribute empty" );
+			$username = $user->getName();
+			$this->logger->notice( "Reverse mapping for {$username} failed: {$mapType} attribute empty" );
 			return null;
 		}
 
 		try {
 			$result = $this->searchLDAPUser( [ $searchAttr => $searchValue ], [ 'dn '] );
 		}  catch ( Exception $ex ) {
-			wfDebugLog( 'SimpleLDAPAuth', "Error fetching userinfo: {$ex->getMessage()}" );
-			wfDebugLog( 'SimpleLDAPAuth', $ex->getTraceAsString() );
+			$errorMessage = wfMessage(
+				'ext.hybridldap.auth.userinfo-error', $this->domain
+			)->text();
+			$this->logger->error( "Error searching userinfo for [{$searchAttr}: {$searchValue}]",
+				[ 'exception' => $ex ]);
 			$result = null;
 		}
 		return $result ? $result['dn'] : null;
@@ -379,7 +401,7 @@ class LDAPUserMapper {
 			return null;
 		}
 		if ( count( $users ) > 1 ) {
-			wfDebugLog( 'SimpleLDAPAuth', "User query returned more than one result (filter={$filter})" );
+			$this->logger->notice( "User query returned more than one result (filter: {$filter})" );
 		}
 		if ( count( $users ) !== 1 ) {
 			return null;

@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth;
+namespace MediaWiki\Extension\HybridLDAPAuth;
 
 use User;
 use MediaWiki\User\UserFactory;
@@ -8,8 +8,8 @@ use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 class UserLinkStore {
-	const BASETABLE = 'link';
-	const TABLE = 'ldap_simpleauth_' . self::BASETABLE;
+	const BASETABLE = 'user_link';
+	const TABLE = 'ext_hybridldap_' . self::BASETABLE;
 
 	/**
 	 * @var ILoadBalancer

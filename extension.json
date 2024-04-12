@@ -1,11 +1,11 @@
 {
-	"name": "SimpleLDAPAuth",
+	"name": "HybridLDAPAuth",
 	"version": "1.0",
 	"author": [
 		"Shiz"
 	],
-	"url": "https://github.com/revspace/mediawiki-SimpleLDAPAuth",
-	"descriptionmsg": "ext.simpleldapauth.desc",
+	"url": "https://github.com/revspace/mediawiki-HybridLDAPAuth",
+	"descriptionmsg": "ext.hybridldap.auth-desc",
 	"license-name": "GPL-2.0",
 	"type": "other",
 	"requires": {
@@ -13,14 +13,14 @@
 	},
 
 	"AvailableRights": [
-		"ext.simpleldapauth.link"
+		"ext.hybridldap.link"
 	],
 	"AuthManagerAutoConfig": {
 		"primaryauth": {
-			"SimpleLDAPAuth": {
-				"class": "MediaWiki\\Extension\\SimpleLDAPAuth\\Auth\\LDAPAuthProvider",
+			"HybridLDAPAuth": {
+				"class": "MediaWiki\\Extension\\HybridLDAPAuth\\Auth\\PrimaryLDAPAuthProvider",
 				"services": [
-					"SimpleLDAPAuth.LDAPAuthManager"
+					"HybridLDAPAuth.LDAPAuthManager"
 				],
 				"sort": 50
 			}
@@ -33,34 +33,34 @@
 		}
 	},
 	"AutoloadNamespaces": {
-		"MediaWiki\\Extension\\SimpleLDAPAuth\\" : "src/"
+		"MediaWiki\\Extension\\HybridLDAPAuth\\" : "src/"
 	},
 	"MessagesDirs": {
-		"SimpleLDAPAuth": [
+		"HybridLDAPAuth": [
 			"i18n"
 		]
 	},
 	"APIModules": {
-		"ext.simpleldapauth.unlink": {
-			"class": "MediaWiki\\Extension\\SimpleLDAPAuth\\Api\\Unlink"
+		"ext.hybridldap.unlink": {
+			"class": "MediaWiki\\Extension\\HybridLDAPAuth\\Api\\Unlink"
 		}
 	},
 	"Hooks": {
-		"LoadExtensionSchemaUpdates": "MediaWiki\\Extension\\SimpleLDAPAuth\\Hooks::onLoadExtensionSchemaUpdates"
+		"LoadExtensionSchemaUpdates": "MediaWiki\\Extension\\HybridLDAPAuth\\Hooks::onLoadExtensionSchemaUpdates"
 	},
 	"ServiceWiringFiles": ["src/ServiceWiring.php"],
 
-	"config_prefix": "LDAPAuthProvider",
+	"config_prefix": "HybridLDAP",
 	"config": {
-		"domains": []
+		"Domains": []
 	},
 	"attributes": {
 		"PluggableAuth": {
-			"SimpleLDAPAuth": {
-				"class": "MediaWiki\\Extension\\SimpleLDAPAuth\\Auth\\LDAPPluggableAuth",
+			"HybridLDAPAuth": {
+				"class": "MediaWiki\\Extension\\HybridLDAPAuth\\Auth\\PluggableLDAPAuthProvider",
 				"services": [
 					"AuthManager",
-					"SimpleLDAPAuth.LDAPAuthManager"
+					"HybridLDAPAuth.LDAPAuthManager"
 				]
 			}
 		}

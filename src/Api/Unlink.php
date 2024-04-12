@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth\Api;
+namespace MediaWiki\Extension\HybridLDAPAuth\Api;
 
 use ApiBase;
 
@@ -23,7 +23,7 @@ class Unlink extends Base {
 	}
 
 	public function execute( ): void {
-		$this->checkUserRightsAny( 'ext.simpleldapauth.link' );
+		$this->checkUserRightsAny( 'ext.hybridldap.link' );
 
 		$params = $this->extractRequestParams();
 		$dn = $params["dn"];

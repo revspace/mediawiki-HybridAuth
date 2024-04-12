@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\SimpleLDAPAuth\Lib;
+namespace MediaWiki\Extension\HybridLDAPAuth\Lib;
 
 use User;
 use MediaWiki\User\UserFactory;
