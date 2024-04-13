@@ -9,7 +9,7 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\LoggerAwareInterface;
 use Wikimedia\Rdbms\ILoadBalancer;
 
-class LDAPGroupMapper implements LoggerAwareInterface {
+class GroupMapper implements LoggerAwareInterface {
 	const CONFIG_BASE_DN     = 'base_dn';
 	const CONFIG_BASE_RDN    = 'base_rdn';
 	const CONFIG_MEMBER_ATTR = 'member_attr';
@@ -31,11 +31,11 @@ class LDAPGroupMapper implements LoggerAwareInterface {
 	protected $config;
 
 	/**
-	 * @var LDAPUserMapper
+	 * @var UserMapper
 	 */
 	protected $userMapper;
 
-	public function __construct( string $domain, Config $config, LDAPUserMapper $userMapper ) {
+	public function __construct( string $domain, Config $config, UserMapper $userMapper ) {
 		$this->setLogger( LoggerFactory::getInstance( 'HybridLDAPAuth.GroupMapper' ) );
 		$this->domain = $domain;
 		$this->config = $config;

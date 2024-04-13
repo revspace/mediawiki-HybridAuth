@@ -5,8 +5,10 @@ namespace MediaWiki\Extension\HybridLDAPAuth;
 use Config;
 use HashConfig;
 use User;
+use MediaWiki\Extension\HybridLDAPAuth\Lib\GroupMapper;
 use MediaWiki\Extension\HybridLDAPAuth\Lib\LDAPClient;
 use MediaWiki\Extension\HybridLDAPAuth\Lib\UserFinder;
+use MediaWiki\Extension\HybridLDAPAuth\Lib\UserMapper;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserNameUtils;
@@ -40,12 +42,12 @@ class LDAPAuthDomain {
 	protected $linkStore;
 
 	/**
-	 * @var LDAPUserMapper
+	 * @var UserMapper
 	 */
 	protected $userMapper;
 
 	/**
-	 * @var LDAPGroupMapper
+	 * @var GroupMapper
 	 */
 	protected $groupMapper;
 
@@ -60,10 +62,10 @@ class LDAPAuthDomain {
 
 		$finder = new UserFinder( $loadBalancer, $this->userFactory );
 		$userConfig = new HashConfig( $this->getConfig( static::CONFIG_USER, [] ) );
-		$this->userMapper = new LDAPUserMapper( $this->domain, $userConfig, $userNameUtils, $client, $finder, $this->linkStore );
+		$this->userMapper = new UserMapper( $this->domain, $userConfig, $userNameUtils, $client, $finder, $this->linkStore );
 
 		$groupConfig = new HashConfig( $this->getConfig( static::CONFIG_GROUP, [] ) );
-		$this->groupMapper = new LDAPGroupMapper ( $this->domain, $groupConfig, $this->userMapper );
+		$this->groupMapper = new GroupMapper ( $this->domain, $groupConfig, $this->userMapper );
 	}
 
 	protected function getConfig( string $key, $default = null ) {

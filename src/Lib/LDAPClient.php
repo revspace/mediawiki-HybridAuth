@@ -17,6 +17,7 @@ class LDAPClient {
 	const CONFIG_PORT      = 'port';
 	const CONFIG_BASE_DN   = 'base_dn';
 	const CONFIG_BIND_DN   = 'bind_dn';
+	const CONFIG_BIND_RDN  = 'bind_rdn';
 	const CONFIG_BIND_PW   = 'bind_pass';
 
 	/**
@@ -45,7 +46,7 @@ class LDAPClient {
 		return $this->config->has( $key ) ? $this->config->get( $key ) : $default;
 	}
 
-	public function getBaseDN( ): string {
+	public function getBaseDN(): string {
 		return $this->getConfig( static::CONFIG_BASE_DN );
 	}
 
@@ -67,7 +68,7 @@ class LDAPClient {
 		);
 	}
 
-	protected function connect( ): void {
+	protected function connect(): void {
 		$uri = $this->getConfig(static::CONFIG_URI);
 		$host = $this->getConfig( static::CONFIG_HOST );
 		if ( !$uri ) {
@@ -108,18 +109,24 @@ class LDAPClient {
 		}
 	}
 
-	public function bind( ): bool {
+	public function bind(): bool {
 		$bindDN = $this->getConfig( static::CONFIG_BIND_DN );
+		if ( !$bindDN ) {
+			$bindRDN = $this->getConfig( static::CONFIG_BIND_RDN );
+			if ( $bindRDN ) {
+				$bindDN = $bindRDN . "," . $this->getBaseDN();
+			}
+		}
 		$bindPW = $this->getConfig( static::CONFIG_BIND_PW );
-		if ( !$bindDN || !$bindPW ) {
-			return $this->bindAnon();
+		if ( $bindDN && $bindPW ) {
+			return $this->bindAs ( $bindDN, $bindPW );
 		} else {
-			return $this->bindAs( $bindDN, $bindPW );
+			return $this->bindAnon( $bindDN );
 		}
 	}
 
-	public function bindAnon( ) {
-		$bound = \ldap_bind( $this->conn, null, null );
+	public function bindAnon( ?string $dn = null ) {
+		$bound = \ldap_bind( $this->conn, $dn, null );
 		/* only update if successful, as we can retain old binding */
 		if ( $bound ) {
 			$this->bound = true;
@@ -136,18 +143,18 @@ class LDAPClient {
 		return $bound;
 	}
 
-	public function unbind( ) {
+	public function unbind() {
 		if ( \ldap_unbind( $this->conn ) ) {
 			$this->bound = false;
 		}
 	}
 
-	public function isBound( ): bool {
+	public function isBound(): bool {
 		return $this->bound;
 	}
 
 
-	protected function ensureBound( ): void {
+	protected function ensureBound(): void {
 		if ( $this->isBound() )
 			return;
 		if ( !$this->bind() ) {

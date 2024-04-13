@@ -12,7 +12,7 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\LoggerAwareInterface;
 use Wikimedia\Rdbms\ILoadBalancer;
 
-class LDAPUserMapper implements LoggerAwareInterface {
+class UserMapper implements LoggerAwareInterface {
 	const CONFIG_BASE_DN       = 'base_dn';
 	const CONFIG_BASE_RDN      = 'base_rdn';
 	const CONFIG_NAME_ATTR     = 'name_attr';

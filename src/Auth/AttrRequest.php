@@ -6,7 +6,7 @@ use RawMessage;
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\AuthenticationRequest;
 
-class LDAPAttrRequest extends AuthenticationRequest {
+class AttrRequest extends AuthenticationRequest {
 	public function __construct ( string $domain, string $dn, array $attributes = [] ) {
 		$this->domain = $domain;
 		$this->dn = $dn;

@@ -5,9 +5,6 @@ namespace MediaWiki\Extension\HybridLDAPAuth\Api;
 use ApiBase;
 use ApiMain;
 use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthManager;
-use MediaWiki\Extension\HybridLDAPAuth\LDAPGroupMapper;
-use MediaWiki\Extension\HybridLDAPAuth\LDAPUserMapper;
-use MediaWiki\Extension\HybridLDAPAuth\UserLinkStore;
 
 abstract class Base extends ApiBase {
 	public function __construct( ApiMain $mainModule, $moduleName ) {

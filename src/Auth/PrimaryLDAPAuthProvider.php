@@ -15,7 +15,7 @@ use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthDomain;
 use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthManager;
 use MediaWiki\Logger\LoggerFactory;
 
-class LDAPPrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
+class PrimaryLDAPAuthProvider extends AbstractPrimaryAuthenticationProvider {
 	const SESSIONKEY_DOMAIN = 'ext.hybridldap.auth.primary.selected-domain';
 	const SESSIONKEY_DN     = 'ext.hybridldap.auth.primary.selected-dn';
 
@@ -53,19 +53,19 @@ class LDAPPrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 		switch ( $action ) {
 		case AuthManager::ACTION_LINK:
 		case AuthManager::ACTION_LOGIN:
-			$reqs[] = new LDAPAuthRequest( $unlinkedDomains );
+			$reqs[] = new AuthRequest( $unlinkedDomains );
 			break;
 		case AuthManager::ACTION_CHANGE:
 			foreach ( $linkedDomains as $domain ) {
 				$ldapAuthDomain = $this->ldapAuthManager->getAuthDomain( $domain );
-				$reqs[] = new LDAPAttrRequest( $domain, $ldapAuthDomain->getDNByUserName( $username ) );
+				$reqs[] = new AttrRequest( $domain, $ldapAuthDomain->getDNByUserName( $username ) );
 			}
 			break;
 		case AuthManager::ACTION_UNLINK:
 		case AuthManager::ACTION_REMOVE:
 			foreach ( $linkedDomains as $domain ) {
 				$ldapAuthDomain = $this->ldapAuthManager->getAuthDomain( $domain );
-				$reqs[] = new LDAPLinkRequest( $domain, $ldapAuthDomain->getDNByUserName( $username ) );
+				$reqs[] = new LinkRequest( $domain, $ldapAuthDomain->getDNByUserName( $username ) );
 			}
 			break;
 		default:
@@ -84,7 +84,7 @@ class LDAPPrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 	 */
 
 	public function beginPrimaryAuthentication( array $reqs ): AuthenticationResponse {
-		$req = AuthenticationRequest::getRequestByClass( $reqs, LDAPAuthRequest::class );
+		$req = AuthenticationRequest::getRequestByClass( $reqs, AuthRequest::class );
 		if ( !$req ) {
 			return AuthenticationResponse::newAbstain();
 		}
@@ -151,7 +151,7 @@ class LDAPPrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 			 * and confirmed with a call to providerChangeAuthenticationData( $req ) below.
 			 */
 			$response = AuthenticationResponse::newPass( null );
-			$response->linkRequest = new LDAPLinkRequest( $domain, $dn );
+			$response->linkRequest = new LinkRequest( $domain, $dn );
 			$response->linkRequest->action = AuthManager::ACTION_LINK;
 			$response->linkRequest->username = $userHint ? $userHint->getName() : null;
 			return $response;
@@ -172,7 +172,7 @@ class LDAPPrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 	}
 
 	public function beginPrimaryAccountLink( $user, array $reqs ): AuthenticationResponse {
-		$req = AuthenticationRequest::getRequestByClass( $reqs, LDAPAuthRequest::class );
+		$req = AuthenticationRequest::getRequestByClass( $reqs, AuthRequest::class );
 		if ( !$req ) {
 			return AuthenticationResponse::newAbstain();
 		}
@@ -264,7 +264,7 @@ class LDAPPrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 	}
 
 	public function providerAllowsAuthenticationDataChange( AuthenticationRequest $req, $checkData = true ): StatusValue {
-		if ( $req instanceof LDAPLinkRequest ) {
+		if ( $req instanceof LinkRequest ) {
 			switch ( $req->action ) {
 			case AuthManager::ACTION_LINK:
 			case AuthManager::ACTION_UNLINK:
@@ -308,7 +308,7 @@ class LDAPPrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 			return;
 		}
 
-		if ( $req instanceof LDAPLinkRequest ) {
+		if ( $req instanceof LinkRequest ) {
 			if ( !$req->domain ) {
 				return;
 			}
