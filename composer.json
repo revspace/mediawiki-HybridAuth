@@ -1,12 +1,13 @@
 {
-	"name": "revspace/mediawiki-HybridLDAPAuth",
+	"name": "revspace/mediawiki-hybridauth",
+	"version": "1.0",
 	"extra": {
-		"installer-name": "HybridLDAPAuth"
+		"installer-name": "HybridAuth"
 	},
 	"license": "GPL-2.0+",
 	"type": "mediawiki-extension",
-	"homepage": "https://github.com/revspace/mediawiki-HybridLDAPAuth",
-	"description": "Hybrid authentication and authorization against LDAP resources",
+	"homepage": "https://github.com/revspace/mediawiki-HybridAuth",
+	"description": "Hybrid authentication and authorization against external resources",
 	"keywords": [
 		"extension",
 		"wiki",

@@ -1,6 +1,6 @@
 <?php
 
-namespace MediaWiki\Extension\HybridLDAPAuth;
+namespace MediaWiki\Extension\HybridAuth;
 
 use User;
 use MediaWiki\User\UserFactory;
@@ -9,7 +9,7 @@ use Wikimedia\Rdbms\ILoadBalancer;
 
 class UserLinkStore {
 	const BASETABLE = 'user_link';
-	const TABLE = 'ext_hybridldap_' . self::BASETABLE;
+	const TABLE = 'ext_hybridauth_' . self::BASETABLE;
 
 	/**
 	 * @var ILoadBalancer
@@ -28,32 +28,32 @@ class UserLinkStore {
 	 * @param  string $dn     to get user for
 	 * @return User|null
 	 */
-	public function getUserForDN( string $domain, string $dn ): ?User {
+	public function getUserForProvider( string $domain, string $id ): ?User {
 		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
 		$row = $dbr->newSelectQueryBuilder()
 			->from( static::TABLE )
 			->field( 'user_id' )
-			->where( [ 'domain' => $domain, 'dn' => $dn ] )
+			->where( [ 'domain' => $domain, 'provider_id' => $id ] )
 			->fetchRow();
 		return $row ? UserFactory::newFromId( $row->user_id ) : null;
 	}
 
 	/**
-	 * @param  UserIdentity $user     User get DN for
-	 * @param  string       $domain   Domain in which to find DN
+	 * @param  UserIdentity $user     User get ID for
+	 * @param  string       $domain   Domain in which to find ID
 	 * @return string|null
 	 */
-	public function getDNForUser( UserIdentity $user, string $domain ): ?string {
+	public function getProviderIDForUser( UserIdentity $user, string $domain ): ?string {
 		if ( !$user->isRegistered() ) {
 			return null;
 		}
 		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
 		$row = $dbr->newSelectQueryBuilder()
 			->from( static::TABLE )
-			->field( 'dn ')
+			->field( 'provider_id ')
 			->where( [ 'user_id' => $user->getId(), 'domain' => $domain ] )
 			->fetchRow();
-		return $row ? $row->dn : null;
+		return $row ? $row->provider_id : null;
 	}
 
 	/**
@@ -93,10 +93,10 @@ class UserLinkStore {
 	/**
 	 * @param UserIdentity $user  User to link
 	 * @param string $domain      Domain to link in
-	 * @param string $dn          DN to link
+	 * @param string $id          Provider ID to link
 	 * @return bool Whether a link was overwritten
 	 */
-	public function linkUser( UserIdentity $user, string $domain, string $dn ): bool {
+	public function linkUser( UserIdentity $user, string $domain, string $id ): bool {
 		$hadLink = $this->unlinkUser( $user, $domain );
 		$userId = $user->getId();
 		if ( $userId != 0 ) {
@@ -106,7 +106,7 @@ class UserLinkStore {
 				[
 					'user_id' => $userId,
 					'domain' => $domain,
-					'dn' => $dn,
+					'provider_id' => $id,
 				],
 				__METHOD__
 			);
@@ -135,14 +135,14 @@ class UserLinkStore {
 
 	/**
 	 * @param string $domain        Domain to unlink in
-	 * @param string $dn            DN to unlink
+	 * @param string $dn            Provider ID to unlink
 	 * @return bool Whether or not a link was present
 	 */
-	public function unlinkDN( string $domain, string $dn ): bool {
+	public function unlinkProvider( string $domain, string $id ): bool {
 		$dbw = $this->loadBalancer->getConnection( DB_PRIMARY );
 		$dbw->delete(
 			static::TABLE,
-			[ 'domain' => $domain, 'dn' => $dn ],
+			[ 'domain' => $domain, 'provider_id' => $id ],
 			__METHOD__
 		);
 		return $dbw->affectedRows() > 0;

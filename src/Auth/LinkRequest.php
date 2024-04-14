@@ -1,19 +1,33 @@
 <?php
 
-namespace MediaWiki\Extension\HybridLDAPAuth\Auth;
+namespace MediaWiki\Extension\HybridAuth\Auth;
 
 use RawMessage;
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\AuthenticationRequest;
 
-class LDAPLinkRequest extends AuthenticationRequest {
-	public function __construct ( string $domain, ?string $dn = null ) {
-		$this->domain = $domain;
-		$this->dn = $dn;
+class LinkRequest extends AuthenticationRequest {
+	/**
+	 * @var string
+	 */
+	protected $hybridAuthDomain;
+	/**
+	 * @var string
+	 */
+	protected $hybridAuthProviderDesc;
+	/**
+	 * @var ?string
+	 */
+	protected $hybridAuthProviderUserID;
+
+	public function __construct ( string $domain, string $providerDesc, ?string $providerUserID = null ) {
+		$this->hybridAuthDomain = $domain;
+		$this->hybridAuthProviderDesc = $providerDesc;
+		$this->hybridAuthProviderUserID = $providerUserID;
 	}
 
 	public function getUniqueId(): string {
-		return parent::getUniqueId() . ":" . $this->domain;
+		return "HybridAuth:LinkRequest:" . $this->getDomain();
 	}
 
 	public function getFieldInfo(): array {
@@ -23,8 +37,10 @@ class LDAPLinkRequest extends AuthenticationRequest {
 			return [
 				'domain' => [
 					'type' => 'button',
-					'label' => wfMessage( 'ext.hybridldap.provider-domain-label', [ $this->domain ] ),
-					'help' => new RawMessage( '' )
+					'label' => wfMessage( 'ext.hybridauth.provider-domain-label',
+						[ $this->hybridAuthDomain, $this->hybridAuthProviderDesc ]
+					),
+					'help' => new RawMessage( '' ),
 				]
 			];
 		default:
@@ -34,10 +50,20 @@ class LDAPLinkRequest extends AuthenticationRequest {
 
 	public function describeCredentials(): array {
 		return [
-			'provider' => wfMessage( 'ext.hybridldap.provider-label' ),
-			'account' => $this->dn
-				? wfMessage( 'ext.hybridldap.account-label', [ $this->domain, $this->dn ] )
-				: wfMessage( 'ext.hybridldap.domain-label', [ $this->domain ] ),
+			'provider' => wfMessage( 'ext.hybridauth.provider-label', [ $this->hybridAuthProviderDesc ] ),
+			'account' => $this->hybridAuthProviderUserID
+				? wfMessage( 'ext.hybridauth.account-label', [
+					$this->hybridAuthDomain, $this->hybridAuthProviderUserID,
+				] )
+				: wfMessage( 'ext.hybridauth.domain-label', [ $this->hybridAuthDomain ] ),
 		];
+	}
+
+	public function getDomain(): string {
+		return $this->hybridAuthDomain;
+	}
+
+	public function getProviderUserID(): ?string {
+		return $this->hybridAuthProviderUserID;
 	}
 }

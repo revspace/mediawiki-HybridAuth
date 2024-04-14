@@ -1,13 +1,13 @@
 <?php
 
-namespace MediaWiki\Extension\HybridLDAPAuth\Api;
+namespace MediaWiki\Extension\HybridAuth\Api;
 
 use ApiBase;
 
 class Unlink extends Base {
 	public function getAllowedParams(): array {
 		$params = parent::getAllowedParams();
-		$params["dn"] = [
+		$params["id"] = [
 			ApiBase::PARAM_TYPE => 'string',
 			ApiBase::PARAM_REQUIRED => true
 		];
@@ -23,13 +23,13 @@ class Unlink extends Base {
 	}
 
 	public function execute( ): void {
-		$this->checkUserRightsAny( 'ext.hybridldap.link' );
+		$this->checkUserRightsAny( 'ext.hybridauth.link' );
 
 		$params = $this->extractRequestParams();
-		$dn = $params["dn"];
+		$id = $params["id"];
 
-		$ldapAuthDomain = $this->getLDAPAuthDomain();
-		$ldapAuthDomain->unlinkUserByDN( $dn );
+		$hybridAuthDomain = $this->getHybridAuthDomain();
+		$hybridAuthDomain->unlinkProviderUser( $id );
 
 		$res = [ 'ok' => true ];
 		$this->getResult()->addValue( null, $this->getModuleName(), $res  );

@@ -1,17 +1,17 @@
 <?php
 
-namespace MediaWiki\Extension\HybridLDAPAuth\Api;
+namespace MediaWiki\Extension\HybridAuth\Api;
 
 use ApiBase;
 use ApiMain;
-use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthManager;
+use MediaWiki\Extension\HybridAuth\HybridAuthManager;
 
 abstract class Base extends ApiBase {
 	public function __construct( ApiMain $mainModule, $moduleName ) {
 		parent::__construct( $mainModule, $moduleName );
 
 		$services = \MediaWiki\MediaWikiServices::getInstance();
-		$this->ldapAuthManager = $services->getService( LDAPAuthManager::SERVICE_NAME );
+		$this->hybridAuthManager = $services->getService( HybridAuthManager::SERVICE_NAME );
 	}
 
 	public function getAllowedParams(): array {
@@ -23,10 +23,10 @@ abstract class Base extends ApiBase {
 		];
 	}
 
-	public function getLDAPAuthDomain(): LDAPAuthDomain {
+	public function getHybridAuthDomain(): HybridAuthDomain {
 		$params = $this->extractRequestParams();
 		$name = $params["domain"];
-		$domain = $this->ldapAuthManager->getAuthDomain( $name );
+		$domain = $this->hybridAuthManager->getAuthDomain( $name );
 		if ( !$domain ) {
 			$this->dieWithError( 'apierror-pagecannotexist' );
 		}

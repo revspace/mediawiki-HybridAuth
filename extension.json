@@ -1,11 +1,11 @@
 {
-	"name": "HybridLDAPAuth",
+	"name": "HybridAuth",
 	"version": "1.0",
 	"author": [
 		"Shiz"
 	],
-	"url": "https://github.com/revspace/mediawiki-HybridLDAPAuth",
-	"descriptionmsg": "ext.hybridldap.auth-desc",
+	"url": "https://github.com/revspace/mediawiki-HybridAuth",
+	"descriptionmsg": "ext.hybridauth.desc",
 	"license-name": "GPL-2.0",
 	"type": "other",
 	"requires": {
@@ -13,14 +13,14 @@
 	},
 
 	"AvailableRights": [
-		"ext.hybridldap.link"
+		"ext.hybridauth.link"
 	],
 	"AuthManagerAutoConfig": {
 		"primaryauth": {
-			"HybridLDAPAuth": {
-				"class": "MediaWiki\\Extension\\HybridLDAPAuth\\Auth\\PrimaryLDAPAuthProvider",
+			"HybridAuth": {
+				"class": "MediaWiki\\Extension\\HybridAuth\\Auth\\PrimaryAuthProvider",
 				"services": [
-					"HybridLDAPAuth.LDAPAuthManager"
+					"HybridAuthManager"
 				],
 				"sort": 50
 			}
@@ -33,34 +33,38 @@
 		}
 	},
 	"AutoloadNamespaces": {
-		"MediaWiki\\Extension\\HybridLDAPAuth\\" : "src/"
+		"MediaWiki\\Extension\\HybridAuth\\" : "src/"
 	},
 	"MessagesDirs": {
-		"HybridLDAPAuth": [
+		"HybridAuth": [
 			"i18n"
 		]
 	},
 	"APIModules": {
-		"ext.hybridldap.unlink": {
-			"class": "MediaWiki\\Extension\\HybridLDAPAuth\\Api\\Unlink"
+		"ext.hybridauth.unlink": {
+			"class": "MediaWiki\\Extension\\HybridAuth\\Api\\Unlink"
 		}
 	},
 	"Hooks": {
-		"LoadExtensionSchemaUpdates": "MediaWiki\\Extension\\HybridLDAPAuth\\Hooks::onLoadExtensionSchemaUpdates"
+		"LoadExtensionSchemaUpdates": "MediaWiki\\Extension\\HybridAuth\\Hooks::onLoadExtensionSchemaUpdates"
 	},
 	"ServiceWiringFiles": ["src/ServiceWiring.php"],
 
-	"config_prefix": "HybridLDAP",
 	"config": {
-		"Domains": []
+		"HybridAuthDomains": {
+			"value": []
+		},
+		"HybridAuthEnableLocal": {
+			"value": true
+		}
 	},
 	"attributes": {
 		"PluggableAuth": {
-			"HybridLDAPAuth": {
-				"class": "MediaWiki\\Extension\\HybridLDAPAuth\\Auth\\PluggableLDAPAuthProvider",
+			"HybridAuth": {
+				"class": "MediaWiki\\Extension\\HybridAuth\\Auth\\PluggableAuthProvider",
 				"services": [
 					"AuthManager",
-					"HybridLDAPAuth.LDAPAuthManager"
+					"HybridAuthManager"
 				]
 			}
 		}

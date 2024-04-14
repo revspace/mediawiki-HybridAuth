@@ -1,12 +1,17 @@
 <?php
 
-namespace MediaWiki\Extension\HybridLDAPAuth;
+namespace MediaWiki\Extension\HybridAuth;
 
+use ExtensionRegistry;
+use MediaWiki\Config\ServiceOptions;
 use MediaWiki\MediaWikiServices;
 
 return [
-	LDAPAuthManager::SERVICE_NAME => function ( MediaWikiServices $services ) : LDAPAuthManager {
-		return new LDAPAuthManager(
+	HybridAuthManager::SERVICE_NAME => function ( MediaWikiServices $services ) : HybridAuthManager {
+		return new HybridAuthManager(
+			new ServiceOptions( HybridAuthManager::SERVICE_OPTIONS, $services->getMainConfig() ),
+			ExtensionRegistry::getInstance(),
+			$services->getObjectFactory(),
 			$services->getDBLoadBalancer(),
 			$services->getUserFactory(),
 			$services->getUserNameUtils()

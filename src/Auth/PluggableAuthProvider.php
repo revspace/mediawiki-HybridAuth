@@ -1,14 +1,14 @@
 <?php
 
-namespace MediaWiki\Extension\HybridLDAPAuth\Auth;
+namespace MediaWiki\Extension\HybridAuth\Auth;
 
 use Exception;
 use MWException;
 use User;
 
 use MediaWiki\Auth\AuthManager;
-use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthDomain;
-use MediaWiki\Extension\HybridLDAPAuth\LDAPAuthManager;
+use MediaWiki\Extension\HybridAuth\HybridAuthDomain;
+use MediaWiki\Extension\HybridAuth\HybridAuthManager;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\User\UserIdentity;
 
@@ -16,11 +16,9 @@ use MediaWiki\Extension\PluggableAuth\PluggableAuth;
 use MediaWiki\Extension\PluggableAuth\PluggableAuthLogin;
 
 
-class PluggableLDAPAuthProvider extends PluggableAuth {
-	const SESSIONKEY_DN = 'ext.hybridldap.auth.pluggable.selected-dn';
-
-	const FORMFIELD_USERNAME = 'ldap_username';
-	const FORMFIELD_PASSWORD = 'ldap_password';
+class PluggableAuthProvider extends PluggableAuth {
+	const SESSIONKEY_PROVIDER_USER_ID = 'ext.hybridauth.pluggable.selected-provider-user-id';
+	const CONFIG_DOMAIN = 'domain';
 
 	/**
 	 * @var AuthManager
@@ -28,33 +26,37 @@ class PluggableLDAPAuthProvider extends PluggableAuth {
 	private $authManager;
 
 	/**
-	 * @var LDAPAuthManager
+	 * @var HybridAuthManager
 	 */
-	private $ldapAuthManager;
+	private $hybridAuthManager;
 
 	/**
-	 * @var ?LDAPAuthDomain
+	 * @var ?HybridAuthDomain
 	 */
-	private $ldapAuthDomain;
+	private $HybridAuthDomain;
 
-	public function __construct( AuthManager $authManager, LDAPAuthManager $ldapAuthManager ) {
-		$this->setLogger( LoggerFactory::getInstance( 'HybridLDAPAuth.Pluggable' ) );
+	public function __construct( AuthManager $authManager, HybridAuthManager $hybridAuthManager ) {
+		$this->setLogger( LoggerFactory::getInstance( 'HybridAuth.Pluggable' ) );
 		$this->authManager = $authManager;
-		$this->ldapAuthManager = $ldapAuthManager;
-		$this->ldapAuthDomain = null;
+		$this->hybridAuthManager = $hybridAuthManager;
+		$this->hybridAuthDomain = null;
 	}
 
-	protected function getLDAPAuthDomain( ): LDAPAuthDomain {
-		if ( !$this->ldapAuthDomain ) {
-			$name = $this->getConfigId();
-			$config = $this->getData();
-			$this->ldapAuthDomain = $this->ldapAuthManager->getAuthDomain( $name, $config );
+	protected function getDomain(): string {
+		$data = $this->getData();
+		return $data->has( static::CONFIG_DOMAIN ) ? $config->get( static::CONFIG_DOMAIN ) : $this->getConfigId();
+	}
+
+	protected function getHybridAuthDomain( ): HybridAuthDomain {
+		if ( !$this->hybridAuthDomain ) {
+			$domain = $this->getDomain();
+			$this->hybridAuthDomain = $this->hybridAuthManager->getAuthDomain( $domain );
 		}
-		return $this->ldapAuthDomain;
+		return $this->hybridAuthDomain;
 	}
 
 	/**
-	 * Authenticates against LDAP
+	 * Authenticates against HybridAuth
 	 * @param int &$id set to user ID
 	 * @param string &$username set to username
 	 * @param string &$realname set to real name
@@ -65,41 +67,45 @@ class PluggableLDAPAuthProvider extends PluggableAuth {
 	 * @SuppressWarnings( ShortVariable )
 	 */
 	public function authenticate( ?int &$id, ?string &$username, ?string &$realname, ?string &$email, ?string &$errorMessage ): bool {
-		$extraLoginFields = $this->authManager->getAuthenticationSessionData(
+		$fields = $this->authManager->getAuthenticationSessionData(
 			PluggableAuthLogin::EXTRALOGINFIELDS_SESSION_KEY
 		);
-		$username = $extraLoginFields[static::FORMFIELD_USERNAME] ?? '';
-		$password = $extraLoginFields[static::FORMFIELD_PASSWORD] ?? '';
-		if ( !$username || !$password ) {
-			return false;
-		}
-
-		$ldapAuthDomain = $this->getLDAPAuthDomain();
-		if ( !$ldapAuthDomain ) {
+		$hybridAuthDomain = $this->getHybridAuthDomain();
+		if ( !$hybridAuthDomain ) {
 			return false;
 		}
 
 		/* Verify user is who they say they are first */
 		$errorMessage = null;
-		$dn = $ldapAuthDomain->authenticateLDAPUser( $username, $password, $errorMessage );
-		if ( !$dn ) {
+		$hybridAuthSession = $hybridAuthDomain->authenticate( $fields, $errorMessage );
+		if ( !$hybridAuthSession ) {
 			if ( !$errorMessage ) {
 				$errorMessage = wfMessage(
-					'ext.hybridldap.auth.credential-error', $this->domain
+					'ext.hybridauth.authentication.credential-error', $this->getDomain()
 				)->text();
 			}
 			return false;
 		}
 
-		/* Now, let's try mapping */
+		/* Now, let's try finding the associated user */
+		$providerUserID = $hybridAuthSession->getUserID();
+		$user = $hybridAuthDomain->getUser( $providerUserID );
 		$userHint = null;
-		$user = $ldapAuthDomain->mapUserFromDN( $dn, $userHint, $errorMessage );
+		if ( !$user ) {
+			/* None found, let's try mapping it */
+			$user = $hybridAuthDomain->mapProviderUser( $hybridAuthSession, $userHint, $errorMessage );
+			if ( $user ) {
+				/* New user found, link it! */
+				$hybridAuthDomain->linkUser( $user, $providerUserID );
+			}
+		}
+
 		if ( !$user ) {
 			/* No user found, but maybe the user hint can help us */
 			if ( $userHint->isRegistered() ) {
 				/* Hinted-at user already exists and we can't do manual confirmation, so reject the attempt. :( */
 				$errorMessage = wfMessage(
-					'ext.hybridldap.map.not-linking', $userHint->getName()
+					'ext.hybridauth.map.not-linking', $userHint->getName()
 				)->text();
 				$this->getLogger()->warning(
 					"Username {username} mapped to collided user {collidedUsername}, not overwriting",
@@ -108,9 +114,9 @@ class PluggableLDAPAuthProvider extends PluggableAuth {
 				return false;
 			}
 			/* Hinted user does not exist yet! Only proceed to create it if that is within our policy. */
-			if ( !$ldapAuthDomain->shouldAutoCreateUser() ) {
+			if ( !$hybridAuthDomain->shouldAutoCreateUser() ) {
 				if ( !$errorMessage ) {
-					$errorMessage = wfMessage( 'ext.hybridldap.map.not-creating' );
+					$errorMessage = wfMessage( 'ext.hybridauth.map.not-creating' );
 				}
 				return false;
 			}
@@ -123,12 +129,12 @@ class PluggableLDAPAuthProvider extends PluggableAuth {
 		 * we can not persist the domain here, as the user id may be null (first login)
 		 */
 		$this->authManager->setAuthenticationSessionData(
-			static::SESSIONKEY_DN,
-			$dn
+			static::SESSIONKEY_PROVIDER_USER_ID,
+			$hybridAuthSession->getProviderUserID(),
 		);
 
 		/* If we matched to an existing user, overwrite attributes,
-		 * else leave them intact from the LDAP query.
+		 * else leave them intact from provider query.
 		 */
 		if ( $user->isRegistered() ) {
 			$id = $user->getId();
@@ -166,33 +172,21 @@ class PluggableLDAPAuthProvider extends PluggableAuth {
 	 * @param int $userId for user
 	 */
 	public function saveExtraAttributes( int $userID ): void {
-		$ldapAuthDomain = $this->getLDAPAuthDomain();
-		$dn = $this->authManager->getAuthenticationSessionData(
-			static::SESSIONKEY_DN
+		$hybridAuthDomain = $this->getHybridAuthDomain();
+		$providerUserID = $this->authManager->getAuthenticationSessionData(
+			static::SESSIONKEY_PROVIDER_USER_ID
 		);
 		/**
 		 * This can be unset when user account creation was initiated by a foreign source
-		 * (e.g Auth_remoteuser). There is no way of knowing the DN at this point.
+		 * (e.g Auth_remoteuser). There is no way of knowing the provider ID at this point.
 		 * This can also not be a local login attempt as it would be caught in `authenticate`.
 		 */
-		if ( $dn !== null ) {
-			$ldapAuthDomain->linkUserByID( $userID, $dn );
+		if ( $providerUserID !== null ) {
+			$hybridAuthDomain->linkUserByID( $userID, $providerUserID );
 		}
 	}
 
 	public static function getExtraLoginFields( ): array {
-		return [
-			static::FORMFIELD_USERNAME => [
-				'type' => 'string',
-				'label' => wfMessage( 'userlogin-yourname' ),
-				'help' => wfMessage( 'authmanager-username-help' ),
-			],
-			static::FORMFIELD_PASSWORD => [
-				'type' => 'password',
-				'label' => wfMessage( 'userlogin-yourpassword' ),
-				'help' => wfMessage( 'authmanager-password-help' ),
-				'sensitive' => true,
-			]
-		];
+		return $this->getHybridAuthDomain()->getAuthenticationFields();
 	}
 }

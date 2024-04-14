@@ -1,73 +1,62 @@
 <?php
 
-namespace MediaWiki\Extension\HybridLDAPAuth\Auth;
+namespace MediaWiki\Extension\HybridAuth\Auth;
 
 use RawMessage;
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\AuthenticationRequest;
 
 class AttrRequest extends AuthenticationRequest {
-	public function __construct ( string $domain, string $dn, array $attributes = [] ) {
-		$this->domain = $domain;
-		$this->dn = $dn;
-		$this->attributes = [];
+	public function __construct ( string $domain, string $providerDesc, string $providerUserID, array $attrFields, ?array $authFields = [] ) {
+		$this->hybridAuthDomain = $domain;
+		$this->hybridAuthProviderDesc = $providerDesc;
+		$this->hybridAuthProviderUserID = $providerUserID;
+		$this->hybridAuthAttrFields = $attrFields;
+		$this->hybridAuthAuthFields = $authFields ?? [];
 	}
 
 	public function getUniqueId(): string {
-		return parent::getUniqueId() . ":" . $this->domain;
+		return "HybridAuth:AttrRequest:" . $this->hybridAuthDomain;
 	}
 
-	public function getFieldInfo(): array {
-		$fields = [];
-		
-		$fields = array_merge( $fields, [
-			'password' => [
-				'type' => 'password',
-				'label' => wfMessage( 'newpassword' ),
-				'help' => wfMessage( 'authmanager-password-help' ),
-				'sensitive' => true,
-			],
-			'retype' => [
-				'type' => 'password',
-				'label' => wfMessage( 'retypenew' ),
-				'help' => wfMessage( 'authmanager-retype-help' ),
-				'sensitive' => true,
-			],
-		]);
-		foreach ( $this->getLDAPAttributes() as $attr => $value ) {
-			$label = wfMessage( "ext.hybridldap.attr.$attr-label" );
-			if ( !$label->exists() ) {
-				$label = wfMessage( 'ext.hybridldap.attr-label', [ $attr ] );
-			}
-			$help = wfMessage( "ext.hybridldap.attr.$attr-help" );
-			if ( !$help->exists() ) {
-				$label = wfMessage( 'ext.hybridldap.attr-help', [ $attr ] );
-			}
-			$attrField = 'ldap_'. $attr;
-			$fields[$attrField] = [
-				'type' => 'string',
-				'label' => $label,
-				'help' => $help,
-				'value' => $value,
-			];
-		}
-
-		return $fields;
+	public function getDomain(): string {
+		return $this->hybridAuthDomain;
 	}
 
-	public function getLDAPAttributes(): array {
+	public function getProviderUserID(): string {
+		return $this->hybridAuthProviderUserID;
+	}
+
+	public function getHybridAuthenticationValues(): array {
 		$values = [];
-		foreach ( $this->attributes as $attr => $value ) {
-			$attrField = 'ldap_' . $attr;
-			$values[$attr] = isset( $this->$attrField ) ? $this->$attrField : $value;
+		foreach ( $this->hybridAuthAuthFields as $name => $desc ) {
+			if ( isset( $this->$name ) ) {
+				$values[$name] = $this->$name;
+			}
 		}
 		return $values;
 	}
 
+	public function getHybridAttributeValues(): array {
+		$values = [];
+		foreach ( $this->hybridAuthAttrFields as $name => $desc ) {
+			if ( isset( $this->$name ) ) {
+				$values[$name] = $this->$name;
+			}
+		}
+		return $values;
+	}
+
+	public function getFieldInfo(): array {
+		return array_merge( $this->hybridAuthAuthFields, $this->hybridAuthAttrFields );
+	}
+
 	public function describeCredentials(): array {
 		return [
-			'provider' => wfMessage( 'ext.hybridldap.provider-label' ),
-			'account' => wfMessage( 'ext.hybridldap.account-label', [ $this->domain, $this->dn ] )
+			'provider' => wfMessage( 'ext.hybridauth.provider-label', [ $this->hybridAuthProviderDesc ] ),
+			'account' => wfMessage( 'ext.hybridauth.account-label', [
+				$this->hybridAuthDomain, $this->hybridAuthProviderUserID,
+			] ),
 		];
-	}
+        }
 }
