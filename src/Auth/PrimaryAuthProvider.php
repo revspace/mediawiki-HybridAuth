@@ -60,10 +60,12 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 		}
 
 		$reqs = [];
+		$domainCount = count( $relevantDomains );
 		if ( $this->hybridAuthManager->isLocalEnabled() ) {
+			$domainCount += 1;
 			switch ( $action ) {
 			case AuthManager::ACTION_LOGIN:
-				$reqs[] = new AuthRequest( null, null, [] );
+				$reqs[] = new AuthRequest( null, null, [], $username !== null, $domainCount == 1 );
 				break;
 			}
 		}
@@ -74,7 +76,7 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 			case AuthManager::ACTION_LOGIN:
 				$authFields = $hybridAuthDomain->getAuthenticationFields();
 				$desc = $hybridAuthDomain->getDescription();
-				$req = new AuthRequest( $domain, $desc, $authFields );
+				$req = new AuthRequest( $domain, $desc, $authFields, $username !== null, $domainCount == 1 );
 				break;
 			case AuthManager::ACTION_CHANGE:
 				$desc = $hybridAuthDomain->getDescription();

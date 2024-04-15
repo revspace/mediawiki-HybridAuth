@@ -7,10 +7,12 @@ use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\AuthenticationRequest;
 
 class AuthRequest extends AuthenticationRequest {
-	public function __construct ( ?string $domain, ?string $desc, array $fields ) {
+	public function __construct ( ?string $domain, ?string $desc, array $fields, bool $continue = false, bool $alone = false ) {
 		$this->hybridAuthDomain = $domain;
 		$this->hybridAuthProviderDesc = $desc;
 		$this->hybridAuthFields = $fields;
+		$this->hybridAuthContinue = $continue;
+		$this->hybridAuthAlone = $alone;
 		$this->domain = null;
 	}
 
@@ -29,12 +31,28 @@ class AuthRequest extends AuthenticationRequest {
 
 		$fields = [
 			'domain' => [
-				'type'    => 'select',
-				'options' => [ $this->getDomainFieldValue() => $domainLabel ],
 				'label'   => wfMessage( 'yourdomainname' ),
 				'help'    => wfMessage( 'authmanager-domain-help' ),
 			]
 		];
+		if ( $this->hybridAuthAlone ) {
+			$fields['domain']['type'] = 'hidden';
+			$this->selectDomain();
+			if ( !$this->isLocalDomain() ) {
+				/* Change submit button to clarify login provider */
+				$buttonLabelName = $this->hybridAuthContinue ? 'pt-login-continue-button' : 'pt-login-button';
+				$fields['hybridauth_submit'] = [
+					'type' => 'button',
+					'label' => wfMessage(
+						'ext.hybridauth.login-button-label',
+						[ wfMessage( $buttonLabelName )->text(), $this->hybridAuthProviderDesc ]
+					),
+				];
+			}
+		} else {
+			$fields['domain']['type'] = 'select';
+			$fields['domain']['options'] = [ $this->getDomainFieldValue() => $domainLabel ];
+		}
 		if ( $this->isDomainSelected() ) {
 			$fields['domain']['value'] = $this->getDomainFieldValue();
 		}
@@ -57,6 +75,10 @@ class AuthRequest extends AuthenticationRequest {
 
 	public function isDomainSelected(): bool {
 		return $this->domain === $this->getDomainFieldValue();
+	}
+
+	public function selectDomain(): void {
+		$this->domain = $this->getDomainFieldValue();
 	}
 
 	public function getDomain(): ?string {

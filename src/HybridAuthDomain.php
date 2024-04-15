@@ -177,7 +177,7 @@ class HybridAuthDomain {
 					return null;
 				}
 				/* Only provide candidate if target user is not already linked */
-				if ( $user && !$this->isUserLinked( $user, $this->domain ) ) {
+				if ( $user && !$this->linkStore->isUserLinked( $user, $this->domain ) ) {
 					$user = null;
 				}
 				if ( $user ) {
@@ -286,14 +286,14 @@ class HybridAuthDomain {
 				switch (  $mapType ) {
 				case static::MAPTYPE_EMAIL:
 					if ( $attrValue !== null && !$overwrite && $user->getEmail() ) {
-						continue;
+						continue 2;
 					}
 					$user->setEmail( $attrValue );
 					$user->confirmEmail();
 					break;
 				case static::MAPTYPE_REALNAME:
 					if ( $attrValue !== null && !$overwrite && $user->getRealName() ) {
-						continue;
+						continue 2;
 					}
 					$user->setRealName( $attrValue );
 					break;

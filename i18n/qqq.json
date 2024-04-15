@@ -6,7 +6,7 @@
 		]
 	},
 
-	"ext.hybridauth.desc": "Hybrid authentication and authorization against external resourcese",
+	"ext.hybridauth.desc": "Hybrid authentication and authorization against external resources",
 	"ext.hybridauth.configuration-error": "Domain configuration error. Please contact your system administrator.",
 
 	"ext.hybridauth.authentication.credential-error": "Could not authenticate credentials against domain \"$1\".",
@@ -25,9 +25,7 @@
 	"ext.hybridauth.provider-domain-label": "$2: $1",
 	"ext.hybridauth.domain-label": "$1",
 	"ext.hybridauth.account-label": "$1: $2",
-
-	"ext.hybridauth.attr-label": "$1",
-	"ext.hybridauth.attr-help": "LDAP '$1' attribute",
+	"ext.hybridauth.login-button-label": "$1 ($2)",
 
 	"apihelp-ext.hybridauth.unlink-summary": "Unlink user from MediaWiki user",
 	"apihelp-ext.hybridauth.unlink-extended-description": "This API can be called to unlink the provider <-> MediaWiki user mapping for a given provider user.",

@@ -45,11 +45,17 @@
 			"class": "MediaWiki\\Extension\\HybridAuth\\Api\\Unlink"
 		}
 	},
+	"HookHandlers": {
+		"main": {
+			"class": "MediaWiki\\Extension\\HybridAuth\\Hooks"
+		}
+	},
 	"Hooks": {
-		"LoadExtensionSchemaUpdates": "MediaWiki\\Extension\\HybridAuth\\Hooks::onLoadExtensionSchemaUpdates"
+		"LoadExtensionSchemaUpdates": "main"
 	},
 	"ServiceWiringFiles": ["src/ServiceWiring.php"],
 
+	"callback": "MediaWiki\\Extension\\HybridAuth\\Hooks::onRegistration",
 	"config": {
 		"HybridAuthDomains": {
 			"value": []
