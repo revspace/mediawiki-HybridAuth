@@ -6,14 +6,22 @@ with various ways of mapping and syncing local and remote users.
 ## Configuration
 
 HybridAuth is a framework, and requires *providers* to implement the needed back-end functionality to integrate with a remote system.
-An authentication and authorization method using a specific provider with specific configuration is referred to as an authentication *domain*.
-Domains can be added by way of entries in the `$wgHybridAuthDomains` configuration parameters. The key of the entry is the name of the domain,
-and the value is an associative array with its configuration. A reference of configuration parameters follows:
+An authentication and authorization method using a specific provider with specific configuration is referred to as an auth *domain*.
+Global configuration parameters are as follows:
+
+### `$wgHybridEnableLocal`
+
+Whether to enable local login as fallback. Default: `true`.
+
+### `$wgHybridDomains`
+
+Auth domains are added by way of entries in this associate array. The key of the entry should be the name of the domain,
+and the value an associative array with the domain configuration. A reference of domain configuration parameters follows:
 
 * `provider`: The name of the provider to use for this domain;
 * `config`: An associative array to pass to the provider for its own configuration;
 
-### `user`
+#### `user`
 
 * `map_type`: How to map remote users to local users, can be one of the followin values (default: `username`):
   - `username`: Match usernames;
@@ -24,7 +32,7 @@ and the value is an associative array with its configuration. A reference of con
   This parameter specifies how to look up a user that could be used to pre-fill values as a hint and can be one of the following values (default: `username`):
   - `username`
 
-### `group`
+#### `group`
 
 ## Providers
 
@@ -46,6 +54,10 @@ Example:
 	}
 }
 ```
+
+### Known providers
+
+* LDAP: [HybridAuth-LDAP](https://github.com/revspace/mediawiki-HybridAuth-LDAP)
 
 ## License
 
