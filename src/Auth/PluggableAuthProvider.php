@@ -33,7 +33,7 @@ class PluggableAuthProvider extends PluggableAuth {
 	/**
 	 * @var ?HybridAuthDomain
 	 */
-	private $HybridAuthDomain;
+	private $hybridAuthDomain;
 
 	public function __construct( AuthManager $authManager, HybridAuthManager $hybridAuthManager ) {
 		$this->setLogger( LoggerFactory::getInstance( 'HybridAuth.Pluggable' ) );
@@ -94,10 +94,6 @@ class PluggableAuthProvider extends PluggableAuth {
 		if ( !$user ) {
 			/* None found, let's try mapping it */
 			$user = $hybridAuthDomain->mapProviderUser( $hybridAuthSession, $userHint, $errorMessage );
-			if ( $user ) {
-				/* New user found, link it! */
-				$hybridAuthDomain->linkUser( $user, $providerUserID );
-			}
 		}
 
 		if ( !$user ) {
@@ -129,25 +125,21 @@ class PluggableAuthProvider extends PluggableAuth {
 		 * we can not persist the domain here, as the user id may be null (first login)
 		 */
 		$this->authManager->setAuthenticationSessionData(
-			static::SESSIONKEY_PROVIDER_USER_ID,
-			$hybridAuthSession->getProviderUserID(),
+			static::SESSIONKEY_PROVIDER_USER_ID, $providerUserID
 		);
-
-		/* If we matched to an existing user, overwrite attributes,
-		 * else leave them intact from provider query.
-		 */
 		if ( $user->isRegistered() ) {
-			$id = $user->getId();
-			$username = $user->getName();
-			$realname = $user->getRealName();
-			$email = $user->getEmail();
-
-			/* Make sure that the user-domain-relation and user-DN-relation
-			 * is updated for existing users. PluggableAuth will only call this
-			 * when a user gets newly created.
+			/* Make sure that the user link and attributes are updated for existing users.
+			 * PluggableAuth will only call this when a user gets newly created.
 			 */
-			$this->saveExtraAttributes( $id );
+			$this->saveExtraAttributes( $user->getUserId() );
 		}
+
+		/* Finally set the attributes */
+		$id = $user->getId();
+		$username = $user->getName();
+		$realname = $user->getRealName();
+		$email = $user->getEmail();
+
 		return true;
 	}
 
@@ -176,13 +168,30 @@ class PluggableAuthProvider extends PluggableAuth {
 		$providerUserID = $this->authManager->getAuthenticationSessionData(
 			static::SESSIONKEY_PROVIDER_USER_ID
 		);
+		$fields = $this->authManager->getAuthenticationSessionData(
+			PluggableAuthLogin::EXTRALOGINFIELDS_SESSION_KEY
+		);
+
 		/**
 		 * This can be unset when user account creation was initiated by a foreign source
 		 * (e.g Auth_remoteuser). There is no way of knowing the provider ID at this point.
 		 * This can also not be a local login attempt as it would be caught in `authenticate`.
 		 */
-		if ( $providerUserID !== null ) {
-			$hybridAuthDomain->linkUserByID( $userID, $providerUserID );
+		if ( $providerUserID === null ) {
+			return;
+		}
+
+		/* Link user */
+		$hybridAuthDomain->linkUserByID( $userID, $providerUserID );
+
+		/* Synchronize user */
+		$errorMessage = null;
+		$hybridAuthSession = $hybridAuthDomain->authenticate( $fields, $errorMessage );
+		if ( !$hybridAuthSession && $hybridAuthDomain->canSudo( $providerUserID ) ) {
+			$hybridAuthSession = $hybridAuthDomain->sudo( $providerUserID, $errorMessage );
+		}
+		if ( $hybridAuthSession ) {
+			$hybridAuthDomain->synchronizeUserByID( $userID, $hybridAuthSession, $errorMessage );
 		}
 	}
 

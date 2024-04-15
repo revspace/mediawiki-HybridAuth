@@ -12,6 +12,7 @@ use MediaWiki\Extension\HybridAuth\Lib\UserFinder;
 use MediaWiki\Extension\HybridAuth\Lib\UserMapper;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserOptionsManager;
 use MediaWiki\User\UserNameUtils;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -24,6 +25,16 @@ class HybridAuthDomain {
 	const USERCONFIG_AUTO_CREATE = 'auto_create';
 	const USERCONFIG_MAP_TYPE    = 'map_type';
 	const USERCONFIG_HINT_TYPE   = 'hint_type';
+	const USERCONFIG_PULL_ATTRS  = 'pull_attributes';
+	const USERCONFIG_PUSH_ATTRS  = 'push_attributes';
+
+	const SYNCATTR_ATTRIBUTE          = 'attribute';
+	const SYNCATTR_PROVIDER_ATTRIBUTE = 'provider_attribute';
+	const SYNCATTR_PREFERENCE         = 'preference';
+	const SYNCATTR_VALUE              = 'value';
+	const SYNCATTR_CALLBACK           = 'callback';
+	const SYNCATTR_OVERWRITE          = 'overwrite';
+	const SYNCATTR_DELETE             = 'delete';
 
 	const MAPTYPE_NAME = 'username';
 	const MAPTYPE_EMAIL = 'email';
@@ -58,16 +69,27 @@ class HybridAuthDomain {
 	protected $userFactory;
 
 	/**
+	 * @var UserNameUtils
+	 */
+	protected $userNameUtils;
+
+	/**
+	 * @var UserOptionsManager
+	 */
+	protected $userOptionsManager;
+
+	/**
 	 * @var UserLinkStore
 	 */
 	protected $linkStore;
 
-	public function __construct( string $domain, Config $config, HybridAuthProvider $provider, UserFactory $userFactory, UserNameUtils $userNameUtils, UserFinder $userFinder, UserLinkStore $linkStore ) {
+	public function __construct( string $domain, Config $config, HybridAuthProvider $provider, UserFactory $userFactory, UserNameUtils $userNameUtils, UserOptionsManager $userOptionsManager, UserFinder $userFinder, UserLinkStore $linkStore ) {
 		$this->domain = $domain;
 		$this->config = $config;
 		$this->provider = $provider;
 		$this->userFactory = $userFactory;
 		$this->userNameUtils = $userNameUtils;
+		$this->userOptionsManager = $userOptionsManager;
 		$this->userFinder = $userFinder;
 		$this->linkStore = $linkStore;
 
@@ -131,12 +153,11 @@ class HybridAuthDomain {
 
 		/* Try to map it to an existing user */
 		$mapType = $this->getUserConfig( static::USERCONFIG_MAP_TYPE, static::MAPTYPE_NAME );
-		$mapAttrs = $this->getUserMapAttributes( $hybridAuthSession, $mapType, $errorMessage );
-		if ( $mapAttrs === null && !$errorMessage ) {
-			$errorMessage = wfMessage( 'ext.hybridauth.authentication.userinfo-error', $this->domain );
-			$this->logger->notice( "User mapping for {$providerUserID} failed: {$mapType} unmappable" );
+		$mapAttrName = $this->mapUserAttribute( $mapType, $errorMessage );
+		if ( $mapAttrName === null ) {
 			return null;
 		}
+		$mapAttrs = $hybridAuthSession->getUserAttributes( $mapAttrName );
 		if ( $mapAttrs ) {
 			foreach ( $mapAttrs as $attrValue ) {
 				switch ( $mapType ) {
@@ -150,6 +171,10 @@ class HybridAuthDomain {
 				case static::MAPTYPE_REALNAME:
 					$user = $this->userFinder->getUserByRealName( $attrValue );
 					break;
+				default:
+					$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+					$this->logger->critical( "Invalid map type: {$mapType}" );
+					return null;
 				}
 				/* Only provide candidate if target user is not already linked */
 				if ( $user && !$this->isUserLinked( $user, $this->domain ) ) {
@@ -166,8 +191,15 @@ class HybridAuthDomain {
 		if ( $hintType === $mapType ) {
 			$hintType = null;
 		}
-		$hintErrorMessage = null;
-		$hintAttrs = $hintType ? $this->getUserMapAttributes( $hybridAuthSession, $hintType, $hintErrorMessage ) : null;
+		if ( $hintType ) {
+			$hintAttrName = $this->mapUserAttribute( $hintType, $errorMessage );
+			if ( $hintAttrName === null ) {
+				return null;
+			}
+		} else {
+			$hintAttrName = null;
+		}
+		$hintAttrs = $hintAttrName ? $hybridAuthSession->getUserAttributes( $hintAttrName ) : null;
 		if ( $hintAttrs ) {
 			foreach ( $hintAttrs as $attrValue) {
 				switch ( $hintType ) {
@@ -175,8 +207,9 @@ class HybridAuthDomain {
 					$userHint = $this->userFactory->newFromName( $attrValue, UserNameUtils::RIGOR_CREATABLE );
 					break;
 				default:
-					$userHint = null;
-					break;
+					$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+					$this->logger->critical( "Invalid map type: {$mapType}" );
+					return null;
 				}
 				if ( $userHint->isRegistered() && $this->linkStore->isUserLinked( $userHint, $this->domain ) ) {
 					/* Don't hint if hinted-at user exists and is already linked. */
@@ -191,7 +224,181 @@ class HybridAuthDomain {
 		return null;
 	}
 
-	protected function getUserMapAttributes( HybridAuthSession $hybridAuthSession, string $mapType, ?Message &$errorMessage ): ?array {
+	public function synchronizeUser( UserIdentity $userIdentity, HybridAuthSession $hybridAuthSession, ?Message &$errorMessage ): bool {
+		$user = $this->userFactory->newFromUserIdentity( $userIdentity );
+		$this->userOptionsManager->clearUserOptionsCache( $user );
+
+		/* Pull attributes into local user */
+		foreach ( $this->getUserConfig( static::USERCONFIG_PULL_ATTRS, [] ) as $pullAttr ) {
+			if ( is_string( $pullAttr ) ) {
+				$pullAttr = [ static::SYNCATTR_ATTRIBUTE => $pullAttr, static::SYNCATTR_OVERWRITE => true ];
+			}
+			if ( !is_array( $pullAttr ) ) {
+				$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+				$this->logger->critical( "Invalid pull attribute type: {$pullAttr}" );
+				return false;
+			}
+			/* Read attribute */
+			if ( isset( $pullAttr[static::SYNCATTR_VALUE] ) ) {
+				$attrValues = [ $pullAttr[static::SYNCATTR_VALUE] ];
+			} else if ( isset( $pullAttr[static::SYNCATTR_PROVIDER_ATTRIBUTE] ) ) {
+				$attrValues = $hybridAuthSession->getUserAttributes( $pullAttr[static::SYNCATTR_PROVIDER_ATTRIBUTE] );
+			} else if ( isset( $pullAttr[static::SYNCATTR_ATTRIBUTE] ) ) {
+				$errorMessage = null;
+				$providerAttrSource = $this->mapUserAttribute( $pullAttr[static::SYNCATTR_ATTRIBUTE], $errorMessage );
+				if ( $providerAttrSource === null ) {
+					return false;
+				}
+				$attrValues = $hybridAuthSession->getUserAttributes( $providerAttrSource );
+			} else {
+				$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+				$this->logger->critical( "Invalid pull attribute, can not determine value source: {$pullAttr}" );
+				return false;
+			}
+			/* Process attribute? */
+			if ( isset( $pullAttr[static::SYNCATTR_CALLBACK] ) ) {
+				$callback = $pullAttr[static::SYNCATTR_CALLBACK];
+				if ( $callback( $attrValues ) === false ) {
+					continue;
+				}
+			}
+			/* Check if it should be deleted */
+			if ( $attrValues === null || !$attrValues || $attrValues[0] === null ) {
+				if ( !($pullAttr[static::SYNCATTR_DELETE] ?? false) ) {
+					continue;
+				}
+				$attrValue = null;
+			} else {
+				$attrValue = is_array( $attrValues ) ? $attrValues[0] : $attrValues;
+			}
+			$overwrite = $pullAttr[static::SYNCATTR_OVERWRITE] ?? true;
+			/* Write attribute */
+			if ( isset( $pullAttr[static::SYNCATTR_PREFERENCE] ) ) {
+				$prefDest = $pullAttr[static::SYNCATTR_PREFERENCE];
+				if ( $attrValue === null ) {
+					$attrValue = $this->userOptionsManager->getDefaultOption( $prefDest );
+				} else if ( !$overwrite && $this->userOptionsManager->getOption( $user, $prefDest, null ) !== null ) {
+					continue;
+				}
+				$this->userOptionsManager->setOption( $user, $prefDest, $attrValue );
+			} else if ( isset( $pullAttr[static::SYNCATTR_ATTRIBUTE] ) ) {
+				$mapType = $pullAttr[static::SYNCATTR_ATTRIBUTE];
+				switch (  $mapType ) {
+				case static::MAPTYPE_EMAIL:
+					if ( $attrValue !== null && !$overwrite && $user->getEmail() ) {
+						continue;
+					}
+					$user->setEmail( $attrValue );
+					$user->confirmEmail();
+					break;
+				case static::MAPTYPE_REALNAME:
+					if ( $attrValue !== null && !$overwrite && $user->getRealName() ) {
+						continue;
+					}
+					$user->setRealName( $attrValue );
+					break;
+				default:
+					$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+					$this->logger->critical( "Invalid pull attribute, invalid map type {$mapType}: {$pullAttr}" );
+					return false;
+				}
+			} else {
+				$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+				$this->logger->critical( "Invalid pull attribute, can not determine value destination: {$pullAttr}" );
+				return false;
+			}
+		}
+
+		/* Push attributes to remote user */
+		foreach ( $this->getUserConfig( static::USERCONFIG_PUSH_ATTRS, [] ) as $pushAttr ) {
+			if ( is_string( $pushAttr ) ) {
+				$pushAttr = [ static::SYNCATTR_ATTRIBUTE => $pushAttr, static::SYNCATTR_OVERWRITE => true ];
+			}
+			if ( !is_array( $pushAttr ) ) {
+				$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+				$this->logger->critical( "Invalid push attribute type: {$pushAttr}" );
+				return false;
+			}
+			/* Read attribute */
+			if ( isset( $pushAttr[static::SYNCATTR_VALUE] ) ) {
+				$attrValue = $pushAttr[static::SYNCATTR_VALUE];
+			} else if ( isset( $pushAttr[static::SYNCATTR_PREFERENCE] ) ) {
+				$attrValue = $this->userOptionsLookup->getOption( $user, $pushAttr[static::SYNCATTR_PREFERENCE] );
+			} else if ( isset( $pushAttr[static::SYNCATTR_ATTRIBUTE] ) ) {
+				$mapType = $pushAttr[static::SYNCATTR_ATTRIBUTE];
+				switch ( $mapType ) {
+				case static::MAPTYPE_NAME:
+					$attrValue = $user->getName();
+					break;
+				case static::MAPTYPE_EMAIL:
+					$attrValue = $user->getEmail();
+					break;
+				case static::MAPTYPE_REALNAME:
+					$attrValue = $user->getRealName();
+					break;
+				default:
+					$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+					$this->logger->critical( "Invalid push attribute, invalid map type {$mapType}: {$pushAttr}" );
+					return false;
+				}
+			} else {
+				$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+				$this->logger->critical( "Invalid push attribute, can not determine value source: {$pushAttr}" );
+				return false;
+			}
+			/* Process attribute? */
+			if ( isset( $pushAttr[static::SYNCATTR_CALLBACK] ) ) {
+				$callback = $pushAttr[static::SYNCATTR_CALLBACK];
+				if ( $callback( $attrValue ) === false ) {
+					continue;
+				}
+			}
+			/* Check if it should be deleted */
+			if ( $attrValue === null ) {
+				if ( !($pushAttr[static::SYNCATTR_DELETE] ?? false) ) {
+					continue;
+				}
+				$attrValues = [];
+			} else if ( is_array( $attrValue ) ) {
+				$attrValues = $attrValue;
+			} else {
+				$attrValues = [ $attrValue ];
+			}
+			$overwrite = $pushAttr[static::SYNCATTR_OVERWRITE] ?? true;
+			/* Write attribute */
+			if ( isset( $pushAttr[static::SYNCATTR_PROVIDER_ATTRIBUTE] ) ) {
+				$providerAttrDest = $pushAttr[static::SYNCATTR_PROVIDER_ATTRIBUTE];
+				if ( $attrValues && !$overwrite && $hybridAuthSession->getUserAttributes( $providerAttrDest ) ) {
+					continue;
+				}
+				$hybridAuthSession->setUserAttributes( $providerAttrDest, $attrValues );
+			} else if ( isset( $pushAttr[static::SYNCATTR_ATTRIBUTE] ) ) {
+				$errorMessage = null;
+				$providerAttrDest = $this->mapUserAttribute( $pushAttr[static::SYNCATTR_ATTRIBUTE], $errorMessage );
+				if ( $providerAttrDest === null ) {
+					return false;
+				}
+				if ( $attrValues && !$overwrite && $hybridAuthSession->getUserAttributes( $providerAttrDest ) ) {
+					continue;
+				}
+				$hybridAuthSession->setUserAttributes( $providerAttrDest, $attrValues );
+			} else {
+				$errorMessage = wfMessage( 'ext.hybridauth.configuration-error', $this->domain );
+				$this->logger->critical( "Invalid push attribute, can not determine value destination: {$pushAttr}" );
+				return false;
+			}
+		}
+
+		$user->saveSettings();
+		return true;
+	}
+
+	public function synchronizeUserByID( int $userID, HybridAuthSession $hybridAuthSession, ?Message &$errorMessage ): bool {
+		$user = $this->userFactory->newFromId( $userID );
+		return $user ? $this->synchronizeUser( $user, $hybridAuthSession, $errorMessage ) : false;
+	}
+
+	protected function mapUserAttribute( string $mapType, ?Message &$errorMessage ): ?string {
 		switch ( $mapType ) {
 		case static::MAPTYPE_NAME:
 			$attrType = HybridAuthProvider::USERATTR_NAME;
@@ -213,7 +420,7 @@ class HybridAuthDomain {
 			$this->logger->critical( "User attribute {$attrType} attribute empty does not map in domain {$this->domain}" );
 			return null;
 		}
-		return $hybridAuthSession->getUserAttributes( $providerAttrName );
+		return $providerAttrName;
 	}
 
 

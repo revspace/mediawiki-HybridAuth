@@ -14,7 +14,8 @@ return [
 			$services->getObjectFactory(),
 			$services->getDBLoadBalancer(),
 			$services->getUserFactory(),
-			$services->getUserNameUtils()
+			$services->getUserNameUtils(),
+			$services->getUserOptionsManager()
 		);
 	},
 ];

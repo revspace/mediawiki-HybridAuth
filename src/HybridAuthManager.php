@@ -9,6 +9,7 @@ use MediaWiki\Config\ServiceOptions;
 use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserNameUtils;
+use MediaWiki\User\UserOptionsManager;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 use MediaWiki\Extension\HybridAuth\Lib\UserFinder;
@@ -54,6 +55,11 @@ class HybridAuthManager {
 	protected $userNameUtils;
 
 	/**
+	 * @var UserOptionsManager
+	 */
+	protected $userOptionsManager;
+
+	/**
 	 * @var UserFinder
 	 */
 	protected $userFinder;
@@ -68,13 +74,14 @@ class HybridAuthManager {
 	 */
 	protected $domains;
 
-	public function __construct( ServiceOptions $options, ExtensionRegistry $extensions, $objectFactory, ILoadBalancer $loadBalancer, UserFactory $userFactory, UserNameUtils $userNameUtils ) {
+	public function __construct( ServiceOptions $options, ExtensionRegistry $extensions, $objectFactory, ILoadBalancer $loadBalancer, UserFactory $userFactory, UserNameUtils $userNameUtils, UserOptionsManager $userOptionsManager ) {
 		$options->assertRequiredOptions( static::SERVICE_OPTIONS );
 		$this->enableLocal = $options->get( static::OPTION_LOCAL );
 		$this->domainOptions = static::resolveDomainOptions( $options->get( static::OPTION_DOMAINS ), $extensions );
 		$this->objectFactory = $objectFactory;
 		$this->userFactory = $userFactory;
 		$this->userNameUtils = $userNameUtils;
+		$this->userOptionsManager = $userOptionsManager;
 		$this->userFinder = new UserFinder( $loadBalancer, $this->userFactory );
 		$this->userLinkStore = new UserLinkStore( $loadBalancer );
 		$this->domains = [];
@@ -106,20 +113,25 @@ class HybridAuthManager {
 		return $this->enableLocal;
 	}
 
-	public function getAuthDomain( string $domain ): ?HybridAuthDomain {
-		if ( !isset( $this->domains[$domain] ) ) {
-			$domainOptions = $this->domainOptions[$domain] ?? null;
+	public function getAuthDomain( string $domainName ): ?HybridAuthDomain {
+		if ( !isset( $this->domains[$domainName] ) ) {
+			$domainOptions = $this->domainOptions[$domainName] ?? null;
 			if ( !$domainOptions ) {
 				return null;
 			}
-			$domainConfig = new HashConfig( $domainOptions[static::DOMAINOPTION_CONFIG] ?? [] );
+			$providerConfig = new HashConfig( $domainOptions[static::DOMAINOPTION_CONFIG] ?? [] );
 			$provider = $this->objectFactory->createObject( $domainOptions[static::DOMAINOPTION_SPEC], [
 				'assertClass' => HybridAuthProvider::class,
-				'extraArgs' => [$domain, $domainConfig],
+				'extraArgs' => [$domainName, $providerConfig],
 			]);
-			$this->domains[$domain] = new HybridAuthDomain( $domain, new HashConfig( $domainOptions ), $provider, $this->userFactory, $this->userNameUtils, $this->userFinder, $this->userLinkStore );
+			$domainConfig = new HashConfig( $domainOptions );
+			$this->domains[$domainName] = new HybridAuthDomain(
+				$domainName, $domainConfig, $provider,
+				$this->userFactory, $this->userNameUtils, $this->userOptionsManager,
+				$this->userFinder, $this->userLinkStore
+			);
 		}
-		return $this->domains[$domain];
+		return $this->domains[$domainName];
 	}
 
 	public function getAllDomains( ?Config $config = null ): array {
