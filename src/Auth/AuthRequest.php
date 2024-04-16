@@ -13,15 +13,16 @@ class AuthRequest extends AuthenticationRequest {
 		$this->hybridAuthFields = $fields;
 		$this->hybridAuthContinue = $continue;
 		$this->hybridAuthAlone = $alone;
+		$this->hybridAuthUsername = null;
 		$this->domain = null;
 	}
 
 	public function getUniqueId(): string {
-		return "HybridAuth:AuthRequest:" . $this->getDomain();
+		return "HybridAuth:AuthRequest:" . $this->getHybridDomain();
 	}
 
 	public function getFieldInfo(): array {
-		if ( $this->isLocalDomain() ) {
+		if ( $this->isLocalHybridDomain() ) {
 			$domainLabel = wfMessage( 'ext.hybridauth.local-domain-label' );
 		} else {
 			$domainLabel = wfMessage( 'ext.hybridauth.provider-domain-label',
@@ -37,8 +38,8 @@ class AuthRequest extends AuthenticationRequest {
 		];
 		if ( $this->hybridAuthAlone ) {
 			$fields['domain']['type'] = 'hidden';
-			$this->selectDomain();
-			if ( !$this->isLocalDomain() ) {
+			$this->selectHybridDomain();
+			if ( !$this->isLocalHybridDomain() ) {
 				/* Change submit button to clarify login provider */
 				$buttonLabelName = $this->hybridAuthContinue ? 'pt-login-continue-button' : 'pt-login-button';
 				$fields['hybridauth_submit'] = [
@@ -51,14 +52,20 @@ class AuthRequest extends AuthenticationRequest {
 			}
 		} else {
 			$fields['domain']['type'] = 'select';
-			$fields['domain']['options'] = [ $this->getDomainFieldValue() => $domainLabel ];
+			$fields['domain']['options'] = [ $this->getHybridDomainFieldValue() => $domainLabel ];
 		}
-		if ( $this->isDomainSelected() ) {
-			$fields['domain']['value'] = $this->getDomainFieldValue();
+		if ( $this->isHybridDomainSelected() ) {
+			$fields['domain']['value'] = $this->getHybridDomainFieldValue();
 		}
 		foreach ( $this->hybridAuthFields as $key => $value ) {
+			/* Work around MediaWiki bug that equates a `username` field to other unwanted stuff */
+			if ( $this->action === AuthManager::ACTION_LINK && $key === 'username' ) {
+				$key = 'hybridauth_username';
+			}
 			$fields[$key] = $value;
 		}
+
+
 		return $fields;
 	}
 
@@ -69,31 +76,41 @@ class AuthRequest extends AuthenticationRequest {
 		];
 	}
 
-	public function isLocalDomain(): bool {
+	public function getHybridUsername(): ?string {
+		return $this->hybridAuthUsername;
+	}
+
+	public function isLocalHybridDomain(): bool {
 		return !$this->hybridAuthDomain;
 	}
 
-	public function isDomainSelected(): bool {
-		return $this->domain === $this->getDomainFieldValue();
+	public function isHybridDomainSelected(): bool {
+		return $this->domain === $this->getHybridDomainFieldValue();
 	}
 
-	public function selectDomain(): void {
-		$this->domain = $this->getDomainFieldValue();
+	public function selectHybridDomain(): void {
+		$this->domain = $this->getHybridDomainFieldValue();
 	}
 
-	public function getDomain(): ?string {
+	public function getHybridDomain(): ?string {
 		return $this->hybridAuthDomain;
 	}
 
-	public function getFieldValues(): array {
+	public function getHybridAuthenticationValues(): array {
 		$values = [];
 		foreach ( $this->hybridAuthFields as $key => $value ) {
-			$values[$key] = $this->$key ?? null;
+			/* Undo above workaround */
+			if ( $this->action === AuthManager::ACTION_LINK && $key === 'username' ) {
+				$attr = 'hybridauth_username';
+			} else {
+				$attr = $key;
+			}
+			$values[$key] = $this->$attr ?? null;
 		}
 		return $values;
 	}
 
-	protected function getDomainFieldValue(): string {
-		return $this->isLocalDomain() ? '' : 'hybridauth.' . $this->hybridAuthDomain;
+	protected function getHybridDomainFieldValue(): string {
+		return $this->isLocalHybridDomain() ? '' : 'hybridauth.' . $this->hybridAuthDomain;
 	}
 }

@@ -16,14 +16,27 @@ class AttrRequest extends AuthenticationRequest {
 	}
 
 	public function getUniqueId(): string {
-		return "HybridAuth:AttrRequest:" . $this->hybridAuthDomain;
+		return "HybridAuth:AttrRequest:" . $this->getHybridDomain();
 	}
 
-	public function getDomain(): string {
+	public function getFieldInfo(): array {
+		return array_merge( $this->hybridAuthAuthFields, $this->hybridAuthAttrFields );
+	}
+
+	public function describeCredentials(): array {
+		return [
+			'provider' => wfMessage( 'ext.hybridauth.provider-label', [ $this->hybridAuthProviderDesc ] ),
+			'account' => wfMessage( 'ext.hybridauth.account-label', [
+				$this->hybridAuthDomain, $this->hybridAuthProviderUserID,
+			] ),
+		];
+	}
+
+	public function getHybridDomain(): string {
 		return $this->hybridAuthDomain;
 	}
 
-	public function getProviderUserID(): string {
+	public function getHybridProviderUserID(): string {
 		return $this->hybridAuthProviderUserID;
 	}
 
@@ -46,17 +59,4 @@ class AttrRequest extends AuthenticationRequest {
 		}
 		return $values;
 	}
-
-	public function getFieldInfo(): array {
-		return array_merge( $this->hybridAuthAuthFields, $this->hybridAuthAttrFields );
-	}
-
-	public function describeCredentials(): array {
-		return [
-			'provider' => wfMessage( 'ext.hybridauth.provider-label', [ $this->hybridAuthProviderDesc ] ),
-			'account' => wfMessage( 'ext.hybridauth.account-label', [
-				$this->hybridAuthDomain, $this->hybridAuthProviderUserID,
-			] ),
-		];
-        }
 }

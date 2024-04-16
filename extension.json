@@ -20,7 +20,8 @@
 			"HybridAuth": {
 				"class": "MediaWiki\\Extension\\HybridAuth\\Auth\\PrimaryAuthProvider",
 				"services": [
-					"HybridAuthManager"
+					"HybridAuthManager",
+					"PermissionManager"
 				],
 				"sort": 50
 			}

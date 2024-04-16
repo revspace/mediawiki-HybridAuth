@@ -19,6 +19,7 @@
 	"ext.hybridauth.update.domain-missing": "No domain specified",
 	"ext.hybridauth.update.domain-error": "Invalid domain: $1",
 	"ext.hybridauth.update.id-missing": "No provider user ID specified",
+	"ext.hybridauth.update.auth-missing": "Internal authentication data missing",
 
 	"ext.hybridauth.local-domain-label": "(Local)",
 	"ext.hybridauth.provider-label": "$1",

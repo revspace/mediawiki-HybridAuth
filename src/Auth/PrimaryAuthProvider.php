@@ -11,27 +11,58 @@ use MediaWiki\Auth\AbstractPrimaryAuthenticationProvider;
 use MediaWiki\Auth\AuthenticationRequest;
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\User\UserIdentity;
+
 use MediaWiki\Extension\HybridAuth\HybridAuthDomain;
 use MediaWiki\Extension\HybridAuth\HybridAuthManager;
-use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\Extension\HybridAuth\HybridAuthSession;
 
 class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
-	const SESSIONKEY_DOMAIN           = 'ext.hybridauth.primary.selected-domain';
-	const SESSIONKEY_PROVIDER_USER_ID = 'ext.hybridauth.primary.selected-provider-user-id';
-	const SESSIONKEY_SYNC_AUTHFIELDS  = 'ext.hybridauth.primary.synchronization-auth-fields';
+	const SESSIONKEY_CREATED_USER = 'ext.hybridauth.primary.created-user';
+
+	const SESSUSER_DOMAIN           = 'domain';
+	const SESSUSER_PROVIDER_USER_ID = 'provider_user_id';
+	const SESSUSER_AUTH_FIELDS      = 'auth_fields';
 
 	/**
 	 * @var HybridAuthManager
 	 */
 	private $hybridAuthManager;
+	/**
+	 * @var PermissionManager
+	 */
+	private $permissionManager;
 
-	public function __construct( HybridAuthManager $hybridAuthManager ) {
+	public function __construct( HybridAuthManager $hybridAuthManager, PermissionManager $permissionManager ) {
 		$this->setLogger( LoggerFactory::getInstance( 'HybridAuth.Provider' ) );
 		$this->hybridAuthManager = $hybridAuthManager;
+		$this->permissionManager = $permissionManager;
 	}
 
 	protected function getHybridAuthDomain( string $name ): HybridAuthDomain {
 		return $this->hybridAuthManager->getAuthDomain( $name );
+	}
+
+	protected function setHybridCreatedSessionUser( string $domain, string $providerUserID, array $authFields ) {
+		$this->manager->setAuthenticationSessionData( static::SESSIONKEY_CREATED_USER, [
+			static::SESSUSER_DOMAIN => $domain,
+			static::SESSUSER_PROVIDER_USER_ID => $providerUserID,
+			static::SESSUSER_AUTH_FIELDS => $authFields,
+		] );
+	}
+	
+	protected function popHybridCreatedSessionUser( ?string &$domain, ?string &$providerUserID, ?array &$authFields ): bool {
+		$userInfo = $this->manager->getAuthenticationSessionData( static::SESSIONKEY_CREATED_USER, null );
+		if ( !$userInfo ) {
+			return false;
+		}
+		$this->manager->removeAuthenticationSessionData( static::SESSIONKEY_CREATED_USER, null );
+		$domain = $userInfo[static::SESSUSER_DOMAIN];
+		$providerUserID = $userInfo[static::SESSUSER_PROVIDER_USER_ID];
+		$authFields = $userInfo[static::SESSUSER_AUTH_FIELDS];
+		return true;
 	}
 
 
@@ -106,7 +137,7 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 		}
 		foreach ($reqs as $req) {
 			$req->action = $action;
-			$req->username = $username;
+			$req->hybridAuthUsername = $username;
 		}
 		return $reqs;
 	}
@@ -117,17 +148,17 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 
 	public function beginPrimaryAuthentication( array $reqs ): AuthenticationResponse {
 		foreach ( $reqs as $req ) {
-			if ( !($req instanceof AuthRequest) ) {
+			if ( !( $req instanceof AuthRequest ) ) {
 				continue;
 			}
-			if ( $req->isLocalDomain() || !$req->isDomainSelected() ) {
+			if ( $req->isLocalHybridDomain() || !$req->isHybridDomainSelected() ) {
 				continue;
 			}
-			$domain = $req->getDomain();
+			$domain = $req->getHybridDomain();
 			if ( !$domain ) {
 				continue;
 			}
-			$fieldValues = $req->getFieldValues();
+			$fieldValues = $req->getHybridAuthenticationValues();
 			return $this->beginHybridAuthentication( $domain, $fieldValues );
 		}
 		return AuthenticationResponse::newAbstain();
@@ -135,23 +166,23 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 
 	public function beginPrimaryAccountLink( $user, array $reqs ): AuthenticationResponse {
 		foreach ( $reqs as $req ) {
-			if ( !($req instanceof AuthRequest) ) {
+			if ( !( $req instanceof AuthRequest ) ) {
 				continue;
 			}
-			if ( $req->isLocalDomain() || !$req->isDomainSelected() ) {
+			if ( $req->isLocalHybridDomain() || !$req->isHybridDomainSelected() ) {
 				continue;
 			}
-			$domain = $req->getDomain();
+			$domain = $req->getHybridDomain();
 			if ( !$domain ) {
 				continue;
 			}
-			$fieldValues = $req->getFieldValues();
+			$fieldValues = $req->getHybridAuthenticationValues();
 			return $this->beginHybridAuthentication( $domain, $fieldValues, $user );
 		}
 		return AuthenticationResponse::newAbstain();
 	}
 
-	public function beginHybridAuthentication( string $domain, array $fieldValues, ?User $targetUser = null ): AuthenticationResponse {
+	protected function beginHybridAuthentication( string $domain, array $fieldValues, ?User $targetUser = null ): AuthenticationResponse {
 		$hybridAuthDomain = $this->getHybridAuthDomain( $domain );
 		if ( !$hybridAuthDomain ) {
 			$this->logger->critical( "Could not instantiate domain: $domain" );
@@ -183,10 +214,7 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 				$errorMessage = wfMessage( 'ext.hybridauth.map.not-linking', $domain );
 				return AuthenticationResponse::newFail( $errorMessage );
 			}
-			if ( !$hybridAuthDomain->synchronizeUser( $user, $hybridAuthSession, $errorMessage ) ) {
-				return AuthenticationResponse::newFail( $errorMessage );
-			}
-			return AuthenticationResponse::newPass( $user->getName() );
+			return $this->finishHybridAuthentication( $user, $hybridAuthDomain, $hybridAuthSession );
 		}
 
 		/* Not yet: find a user to link to: either given or by mapping */
@@ -197,12 +225,9 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 			$user = $hybridAuthDomain->mapProviderUser( $hybridAuthSession, $userHint, $errorMessage );
 		}
 		if ( $user ) {
-			/* New user was found: we can link and we're done! */
+			/* Mapped user was found: we can link and we're done! */
 			$hybridAuthDomain->linkUser( $user, $providerUserID );
-			if ( !$hybridAuthDomain->synchronizeUser( $user, $hybridAuthSession, $errorMessage ) ) {
-				return AuthenticationResponse::newFail( $errorMessage );
-			}
-			return AuthenticationResponse::newPass( $user->getName() );
+			return $this->finishHybridAuthentication( $user, $hybridAuthDomain, $hybridAuthSession );
 		}
 
 		/* No user found and no hint: was there anything fatal? */
@@ -210,78 +235,141 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 			return AuthenticationResponse::newFail( $errorMessage );
 		}
 
-		/* Figure out if we want to:
-		 * 1. Link with hinted existing user
-		 * 2. Auto-create hinted-at non-existing user
-		 * 3. Manually create a new user
-		 * Either way, we need to postpone synchronization,
-		 * so save the auth fields to build up a session later in postAuthentication().
+		/* Do we want to automatically create this user? */
+		$canCreate = $this->permissionManager->userHasAnyRight( new User(), 'autocreateaccount', 'createaccount' );
+		if ( $canCreate && $userHint && $hybridAuthDomain->shouldAutoCreateUser( $userHint ) ) {
+			/* Create account! */
+			return $this->createHybridUser( $domain, $providerUserID, $fieldValues, $userHint->getName() );
+		}
+
+		/* At this point we need to ask the user for input and then link.
+		 * This is done by initiating a link request: this will be handled by AuthManager,
+		 * and confirmed with a call to providerChangeAuthenticationData( $req ) below.
+		 * If we can create users, we first give the user the option to in a new UI prompt,
+		 * since the existing AuthManager UI around this does not.
+		 * The link request is initiated in continuePrimaryAuthentication() in that case.
 		 */
-		$this->manager->setAuthenticationSessionData(
-			static::SESSIONKEY_DOMAIN, $domain
-		);
-		$this->manager->setAuthenticationSessionData(
-			static::SESSIONKEY_PROVIDER_USER_ID, $providerUserID
-		);
-		$this->manager->setAuthenticationSessionData(
-			static::SESSIONKEY_SYNC_AUTHFIELDS, $fieldValues
-		);
-		if ( $userHint && !$userHint->isRegistered() && $hybridAuthDomain->shouldAutoCreateUser() ) {
-			/* Initiate user creation: will be handled by AuthManager,
-			 * and confirmed with a call to autoCreatedAccount() below.
-			 */
-			return AuthenticationResponse::newPass( $userHint->getName() );
+		$usernameHint = $userHint && !$userHint->isRegistered() ? $userHint->getName() : null;
+		$linkRequest = $this->prepareHybridUserCreateLink( $domain, $providerUserID, $fieldValues, $usernameHint );
+		if ( $canCreate ) {
+			return $this->startHybridUserCreateLink( $linkRequest );
 		} else {
-			/* Either we have a hint to an existing user, or want to give
-			 * the opportunity to manually create a new user.
-			 * Both are handled by initiating a link request: this will be handled by AuthManager,
-			 * and confirmed with a call to providerChangeAuthenticationData( $req ) below.
-			 */
-			$providerDesc = $hybridAuthDomain->getDescription();
-			$response = AuthenticationResponse::newPass( null );
-			$response->linkRequest = new LinkRequest( $domain, $providerDesc, $providerUserID );
-			$response->linkRequest->action = AuthManager::ACTION_LINK;
-			$response->linkRequest->username = $userHint ? $userHint->getName() : null;
-			return $response;
+			return $this->finishHybridUserLink( $linkRequest );
 		}
 	}
 
-	public function postAuthentication( $user, AuthenticationResponse $response) {
-		$domain = $this->manager->getAuthenticationSessionData( static::SESSIONKEY_DOMAIN );
-		$this->manager->removeAuthenticationSessionData(
-			static::SESSIONKEY_DOMAIN
-		);
-		$providerUserID = $this->manager->getAuthenticationSessionData( static::SESSIONKEY_PROVIDER_USER_ID );
-		$this->manager->removeAuthenticationSessionData(
-			static::SESSIONKEY_PROVIDER_USER_ID
-		);
-		$authFields = $this->manager->getAuthenticationSessionData( static::SESSIONKEY_SYNC_AUTHFIELDS );
-		$this->manager->removeAuthenticationSessionData(
-			static::SESSIONKEY_SYNC_AUTHFIELDS
-		);
-		/* Do delayed synchronization if necessary */
-		if ( $domain && $authFields && $response->status == AuthenticationResponse::PASS ) {
-			$hybridAuthDomain = $this->getHybridAuthDomain( $domain );
-			if ( $hybridAuthDomain ) {
-				$errorMessage = null;
-				$hybridAuthSession = $hybridAuthDomain->authenticate( $authFields, $errorMessage );
-				if ( !$hybridAuthSession && $hybridAuthDomain->canSudo( $providerUserID ) ) {
-					$hybridAuthSession = $hybridAuthDomain->sudo( $providerUserID, $errorMessage );
+	public function continuePrimaryAuthentication( array $reqs ): AuthenticationResponse {
+		foreach ( $reqs as $req ) {
+			if ( !( $req instanceof LinkRequest ) ) {
+				continue;
+			}
+			$domain = $req->getHybridDomain();
+			/* Here, the user either clicks 'create account' or 'continue login' */
+			if ( $req->createaccount ) {
+				$username = $req->new_username ?? null;
+				/* On first show, we hide the username field until the user has clicked 'create'. */
+				if ( !$username ) {
+					$req->new_username = '';
+					$messageType = $username === null ? 'warning' : 'error';
+					return AuthenticationResponse::newUI( $reqs, wfMessage( 'nouserspecified' ), $messageType );
 				}
-				if ( $hybridAuthSession ) {
-					$hybridAuthDomain->synchronizeUser( $user, $hybridAuthSession, $errorMessage );
+				
+				/* Check and create: this will be confirmed with a call to
+				 * autoCreatedAccount() below.
+				 */
+				$hybridAuthDomain = $this->getHybridAuthDomain( $domain );
+				if ( !$hybridAuthDomain ) {
+					return AuthenticationResponse::newAbstain();
 				}
+				if ( !$hybridAuthDomain->canCreateUser( $username ) ) {
+					return AuthenticationResponse::newUI( $reqs, wfMessage( 'userexists' ), 'error' );
+				}
+				return $this->finishHybridUserCreate( $req, $username );
+			} else if ( $req->loginattempt ) {
+				return $this->finishHybridUserLink( $req );
 			}
 		}
+		return AuthenticationResponse::newAbstain();
 	}
 
 	public function beginPrimaryAccountCreation( $user, $creator, array $reqs ): AuthenticationResponse {
 		return AuthenticationResponse::newAbstain();
 	}
 
+
+	/* Session helpers */
+
+	public function finishHybridAuthentication( UserIdentity $user, HybridAuthDomain $hybridAuthDomain, HybridAuthSession $hybridAuthSession ): AuthenticationResponse {
+		if ( !$hybridAuthDomain->synchronizeUser( $user, $hybridAuthSession, $errorMessage ) ) {
+			return AuthenticationResponse::newFail( $errorMessage );
+		}
+		return AuthenticationResponse::newPass( $user->getName() );
+	}
+
+	protected function createHybridUser( string $domain, string $providerUserID, array $authFields, string $username ): AuthenticationResponse {
+		/* Initiate user creation: this will be handled by AuthManager,
+		 * and confirmed with a call to autoCreatedAccount( $req ) below.
+		 */
+		$this->setHybridCreatedSessionUser( $domain, $providerUserID, $authFields );
+		return AuthenticationResponse::newPass( $username );
+	}
+
+	protected function prepareHybridUserCreateLink( string $domain, string $providerUserID, array $authFields, ?string $usernameHint ): LinkRequest {
+		/* Create create/login request */
+		$hybridAuthDomain = $this->getHybridAuthDomain( $domain );
+		$providerDesc = $hybridAuthDomain->getDescription();
+		return new LinkRequest( $domain, $providerDesc, $providerUserID, $usernameHint, $authFields );
+	}
+
+	protected function startHybridUserCreateLink( LinkRequest $linkRequest ): AuthenticationResponse {
+		/* Show create/login UI before continuing */
+		return AuthenticationResponse::newUI( [ $linkRequest ], wfMessage( 'authmanager-authn-no-local-user-link' ), 'warning' );
+	}
+
+	protected function finishHybridUserCreate( LinkRequest $linkRequest, string $username ): AuthenticationResponse {
+		/* Finish by creating user */
+		$domain = $linkRequest->getHybridDomain();
+		$providerUserID = $linkRequest->getHybridProviderUserID();
+		$authFields = $linkRequest->getHybridAuthenticationFields();
+		return $this->createHybridUser( $domain, $providerUserID, $authFields, $username );
+	}
+
+	protected function finishHybridUserLink( LinkRequest $linkRequest ): AuthenticationResponse {
+		/* Initiate link: this will be handled by AuthManager,
+		 * and confirmed with a call to providerChangeAuthenticationData( $req ) below.
+		 */
+		$linkRequest->action = AuthManager::ACTION_LINK;
+		$response = AuthenticationResponse::newPass( null );
+		$response->linkRequest = $linkRequest;
+		return $response;
+	}
+
+
 	/**
 	 * PrimaryAuthenticationProvider: state management
 	 */
+
+	protected function getHybridAuthSession( string $domain, string $providerUserID, array $authFields, ?Message &$errorMessage ): ?HybridAuthSession {
+		$errorMessage = null;
+		$hybridAuthDomain = $this->getHybridAuthDomain( $domain );
+		if ( !$hybridAuthDomain ) {
+			$errorMessage = wfMessage( 'ext.hybridauth.update.domain-error', [ $domain ] );
+			return null;
+		}
+		$hybridAuthSession = $hybridAuthDomain->authenticate( $authFields, $errorMessage );
+		if ( !$hybridAuthSession && $hybridAuthDomain->canSudo( $providerUserID ) ) {
+			$hybridAuthSession = $hybridAuthDomain->sudo( $providerUserID, $errorMessage );
+		}
+		if ( !$hybridAuthSession ) {
+			if ( !$errorMessage ) {
+				$errorMessage = wfMessage(
+					'ext.hybridauth.authentication.credential-error', [ $domain ]
+				);
+			}
+			return null;
+		}
+		return $hybridAuthSession;
+	}
 
 	public function accountCreationType(): string {
 		return static::TYPE_LINK;
@@ -307,18 +395,25 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 		}
 
 		/* Do we need to link this auto-created account? */
-		$domain = $this->manager->getAuthenticationSessionData( static::SESSIONKEY_DOMAIN );
-		$providerUserID = $this->manager->getAuthenticationSessionData( static::SESSIONKEY_PROVIDER_USER_ID );
-		if ( !$domain || !$providerUserID ) {
+		if ( !$this->popHybridCreatedSessionUser( $domain, $providerUserID, $authFields ) ) {
 			return;
 		}
 
-		/* Go ahead and link it now */
+		/* Time to finalize the new user: first, we link.... */
 		$hybridAuthDomain = $this->getHybridAuthDomain( $domain );
 		if ( !$hybridAuthDomain ) {
 			return;
 		}
 		$hybridAuthDomain->linkUser( $user, $providerUserID );
+
+		/* And finally, we synchronize */
+		$hybridAuthSession = $this->getHybridAuthSession( $domain, $providerUserID, $authFields, $errorMessage );
+		if ( !$hybridAuthSession ) {
+			return;
+		}
+		if ( !$hybridAuthDomain->synchronizeUser( $user, $hybridAuthSession, $errorMessage ) ) {
+			return;
+		}
 	}
 
 	public function providerAllowsAuthenticationDataChange( AuthenticationRequest $req, $checkData = true ): StatusValue {
@@ -335,22 +430,36 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 			}
 
 			if ( $checkData ) {
-				if ( !$req->username ) {
+				if ( !$req->getHybridUsername() ) {
 					return StatusValue::newGood( 'ignore' );
 				}
-				$domain = $req->getDomain();
-				$domains = $this->hybridAuthManager->getAllDomains();
-				if ( !in_array( $domain, $domains ) ) {
+				$domain = $req->getHybridDomain();
+				$hybridAuthDomain = $this->getHybridAuthDomain( $domain );
+				if ( !$hybridAuthDomain) {
 					return StatusValue::newFatal(
 						wfMessage( 'ext.hybridauth.update.domain-error', [ $domain ] )
 					);
 				}
-				if ( $req->action == AuthManager::ACTION_LINK && $req->getProviderUserID() === null ) {
-					return StatusValue::newFatal(
-						wfMessage( 'ext.hybridauth.update.id-missing' )
-					);
+				if ( $req->action == AuthManager::ACTION_LINK ) {
+					$providerUserID = $req->getHybridProviderUserID();
+					if ( $providerUserID === null ) {
+						return StatusValue::newFatal(
+							wfMessage( 'ext.hybridauth.update.id-missing' )
+						);
+					}
+					$authFields = $req->getHybridAuthenticationFields();
+					if ( $authFields === null ) {
+						return StatusValue::newFatal(
+							wfMessage( 'ext.hybridauth.update.auth-missing' )
+						);
+					}
+					$req->hybridAuthSession = $this->getHybridAuthSession( $domain, $providerUserID, $authFields, $errorMessage );
+					if ( !$req->hybridAuthSession ) {
+						return StatusValue::newFatal( $errorMessage );
+					}
 				}
 			}
+
 			return StatusValue::newGood();
 		} else if ( $req instanceof AttrRequest ) {
 			switch ( $req->action ) {
@@ -363,13 +472,13 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 			}
 
 			if ( $checkData ) {
-				$providerUserID = $req->getProviderUserID();
+				$providerUserID = $req->getHybridProviderUserID();
 				if ( $providerUserID === null ) {
 					return StatusValue::newFatal(
 						wfMessage( 'ext.hybridauth.update.id-missing' )
 					);
 				}
-				$domain = $req->getDomain();
+				$domain = $req->getHybridDomain();
 				// TODO: identity checks?
 
 				$hybridAuthDomain = $this->getHybridAuthDomain( $domain );
@@ -378,49 +487,46 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 						wfMessage( 'ext.hybridauth.update.domain-error', [ $domain ] )
 					);
 				}
-
-				/* Enter session now */
-				$errorMessage = null;
-				if ( $hybridAuthDomain->canSudo( $providerUserID ) ) {
-					$errorMessage = null;
-					$session = $hybridAuthDomain->sudo( $providerUserID, $errorMessage );
-				} else {
-					$authFields = $req->getHybridAuthenticationValues();
-					$session = $hybridAuthDomain->authenticate( $authFields, $errorMessage );
+				$authFields = $req->getHybridAuthenticationValues();
+				if ( $authFields === null ) {
+					return StatusValue::newFatal(
+						wfMessage( 'ext.hybridauth.update.auth-missing' )
+					);
 				}
-				if ( !$session ) {
-					if ( !$errorMessage ) {
-						$errorMessage = wfMessage(
-							'ext.hybridauth.authentication.credential-error', [ $domain ]
-						);
-					}
+				$req->hybridAuthSession = $this->getHybridAuthSession( $domain, $providerUserID, $authFields, $errorMessage );
+				if ( !$req->hybridAuthSession ) {
 					return Status::newFatal( $errorMessage );
 				}
-				$req->hybridAuthSession = $session;
-				return StatusValue::newGood();
 			}
+
+			return StatusValue::newGood();
 		}
 		return StatusValue::newGood( 'ignore' );
 	}
 
 	public function providerChangeAuthenticationData( AuthenticationRequest $req ) {
-		$username = $req->username;
-		if ( !$username ) {
-			return;
-		}
-
 		if ( $req instanceof LinkRequest ) {
-			$hybridAuthDomain = $this->getHybridAuthDomain( $req->getDomain() );
+			$username = $req->getHybridUsername();
+			if ( !$username ) {
+				return;
+			}
+
+			$hybridAuthDomain = $this->getHybridAuthDomain( $req->getHybridDomain() );
 			if ( !$hybridAuthDomain ) {
 				return;
 			}
 			switch ( $req->action ) {
 			case AuthManager::ACTION_LINK:
-				$providerUserID = $req->getProviderUserID();
+				$providerUserID = $req->getHybridProviderUserID();
 				if ( $providerUserID === null ) {
 					return;
 				}
 				$hybridAuthDomain->linkUserByName( $username, $providerUserID );
+				$hybridAuthSession = $req->hybridAuthSession ?? null;
+				if ( !$hybridAuthSession ) {
+					return;
+				}
+				$hybridAuthDomain->synchronizeUserByName( $username, $hybridAuthSession, $errorMessage );
 				break;
 			case AuthManager::ACTION_UNLINK:
 			case AuthManager::ACTION_REMOVE:

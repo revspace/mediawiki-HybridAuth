@@ -110,11 +110,11 @@ class HybridAuthDomain {
 	}
 
 
-	public function shouldAutoCreateUser(): bool {
+	public function shouldAutoCreateUser( UserIdentity $user): bool {
 		return $this->getUserConfig(
 			static::USERCONFIG_AUTO_CREATE,
 			$this->getConfig( static::CONFIG_AUTO_CREATE, true )
-		);
+		) && !$user->isRegistered();
 	}
 
 	public function getDescription(): string {
@@ -177,7 +177,7 @@ class HybridAuthDomain {
 					return null;
 				}
 				/* Only provide candidate if target user is not already linked */
-				if ( $user && !$this->linkStore->isUserLinked( $user, $this->domain ) ) {
+				if ( $user && $this->linkStore->isUserLinked( $user, $this->domain ) ) {
 					$user = null;
 				}
 				if ( $user ) {
@@ -395,7 +395,12 @@ class HybridAuthDomain {
 
 	public function synchronizeUserByID( int $userID, HybridAuthSession $hybridAuthSession, ?Message &$errorMessage ): bool {
 		$user = $this->userFactory->newFromId( $userID );
-		return $user ? $this->synchronizeUser( $user, $hybridAuthSession, $errorMessage ) : false;
+		return $user && $user->isRegistered() ? $this->synchronizeUser( $user, $hybridAuthSession, $errorMessage ) : false;
+	}
+
+	public function synchronizeUserByName( string $username, HybridAuthSession $hybridAuthSession, ?Message &$errorMessage ): bool {
+		$user = $this->userFactory->newFromName( $username );
+		return $user && $user->isRegistered() ? $this->synchronizeUser( $user, $hybridAuthSession, $errorMessage ) : false;
 	}
 
 	protected function mapUserAttribute( string $mapType, ?Message &$errorMessage ): ?string {
@@ -425,6 +430,10 @@ class HybridAuthDomain {
 
 
 	/* Utility functions */
+	public function canCreateUser( string $username ): bool {
+		$user = $this->userFactory->newFromName( $username, UserNameUtils::RIGOR_CREATABLE );
+		return $user && !$user->isSystemUser() && !$user->isRegistered();
+	}
 
 	public function hasUser( UserIdentity $user ): bool {
 		return $this->getProviderUserID( $user ) !== null;
