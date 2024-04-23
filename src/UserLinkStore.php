@@ -15,12 +15,17 @@ class UserLinkStore {
 	 * @var ILoadBalancer
 	 */
 	protected $loadBalancer = null;
+	/**
+	 * @var UserFactory
+	 */
+	protected $userFactory;
 
 	/**
 	 * @param ILoadBalancer $loadBalancer to use
 	 */
-	public function __construct( ILoadBalancer $loadBalancer ) {
+	public function __construct( ILoadBalancer $loadBalancer, UserFactory $userFactory ) {
 		$this->loadBalancer = $loadBalancer;
+		$this->userFactory = $userFactory;
 	}
 
 	/**
@@ -35,7 +40,7 @@ class UserLinkStore {
 			->field( 'user_id' )
 			->where( [ 'domain' => $domain, 'provider_id' => $id ] )
 			->fetchRow();
-		return $row ? UserFactory::newFromId( $row->user_id ) : null;
+		return $row ? $this->userFactory->newFromId( $row->user_id ) : null;
 	}
 
 	/**

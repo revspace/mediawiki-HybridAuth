@@ -83,7 +83,7 @@ class HybridAuthManager {
 		$this->userNameUtils = $userNameUtils;
 		$this->userOptionsManager = $userOptionsManager;
 		$this->userFinder = new UserFinder( $loadBalancer, $this->userFactory );
-		$this->userLinkStore = new UserLinkStore( $loadBalancer );
+		$this->userLinkStore = new UserLinkStore( $loadBalancer, $this->userFactory );
 		$this->domains = [];
 	}
 

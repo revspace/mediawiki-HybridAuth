@@ -36,7 +36,9 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 	private $permissionManager;
 
 	public function __construct( HybridAuthManager $hybridAuthManager, PermissionManager $permissionManager ) {
-		$this->setLogger( LoggerFactory::getInstance( 'HybridAuth.Provider' ) );
+		if ( !method_exists( $this, 'postInitSetup' ) ) {
+			$this->setLogger( LoggerFactory::getInstance( 'HybridAuth.Provider' ) );
+		}
 		$this->hybridAuthManager = $hybridAuthManager;
 		$this->permissionManager = $permissionManager;
 	}
