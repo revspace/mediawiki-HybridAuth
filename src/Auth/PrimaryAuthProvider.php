@@ -88,6 +88,9 @@ class PrimaryAuthProvider extends AbstractPrimaryAuthenticationProvider {
 		case AuthManager::ACTION_REMOVE:
 			$relevantDomains = $linkedDomains;
 			break;
+		default:
+			$this->logger->error( "Unknown action $action" );
+			return [];
 		}
 
 		$reqs = [];
