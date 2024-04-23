@@ -16,6 +16,10 @@ class UserLinkStore {
 	 */
 	protected $loadBalancer = null;
 	/**
+	 * @var bool
+	 */
+	protected $tableExists;
+	/**
 	 * @var UserFactory
 	 */
 	protected $userFactory;
@@ -26,6 +30,9 @@ class UserLinkStore {
 	public function __construct( ILoadBalancer $loadBalancer, UserFactory $userFactory ) {
 		$this->loadBalancer = $loadBalancer;
 		$this->userFactory = $userFactory;
+		$this->tableExists = $this->loadBalancer
+			->getConnection( DB_REPLICA )
+			->tableExists( static::TABLE );
 	}
 
 	/**
@@ -34,6 +41,9 @@ class UserLinkStore {
 	 * @return User|null
 	 */
 	public function getUserForProvider( string $domain, string $id ): ?User {
+		if ( !$this->tableExists ) {
+			return null;
+		}
 		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
 		$row = $dbr->newSelectQueryBuilder()
 			->from( static::TABLE )
@@ -49,7 +59,7 @@ class UserLinkStore {
 	 * @return string|null
 	 */
 	public function getProviderIDForUser( UserIdentity $user, string $domain ): ?string {
-		if ( !$user->isRegistered() ) {
+		if ( !$this->tableExists || !$user->isRegistered() ) {
 			return null;
 		}
 		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
@@ -66,7 +76,7 @@ class UserLinkStore {
 	 * @return array
 	 */
 	public function getDomainsForUser( UserIdentity $user ): array {
-		if ( !$user->isRegistered() ) {
+		if ( !$this->tableExists || !$user->isRegistered() ) {
 			return [];
 		}
 
@@ -84,7 +94,7 @@ class UserLinkStore {
 	 * @return bool Whether user is linked in domain
 	 */
 	public function isUserLinked( User $user, string $domain ): bool {
-		if ( !$user->isRegistered() ) {
+		if ( !$this->tableExists || !$user->isRegistered() ) {
 			return false;
 		}
 		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
