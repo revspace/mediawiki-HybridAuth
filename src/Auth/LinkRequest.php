@@ -46,7 +46,7 @@ class LinkRequest extends AuthenticationRequest {
 		case AuthManager::ACTION_LOGIN:
 		case AuthManager::ACTION_LOGIN_CONTINUE:
 			$fields = [];
-			if ( $this->new_username !== null ) {
+			if ( ($this->new_username ?? null) !== null ) {
 				$fields['new_username'] = [
 					'type' => 'string',
 					'label' => wfMessage( 'userlogin-yourname' ),
